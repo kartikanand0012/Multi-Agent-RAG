@@ -1,0 +1,52 @@
+[
+  {
+    "question": "What are the main risk factors Apple faces?",
+    "ground_truth": "Apple faces risks including intense competition, supply chain dependence on single sources, cybersecurity threats, macroeconomic conditions, regulatory and legal challenges, and stock price volatility.",
+    "category": "summarization"
+  },
+  {
+    "question": "Who is the Chief Executive Officer of Apple?",
+    "ground_truth": "Tim Cook is the Chief Executive Officer of Apple Inc.",
+    "category": "factual"
+  },
+  {
+    "question": "What products and services does Apple offer?",
+    "ground_truth": "Apple designs, manufactures and markets smartphones, personal computers, tablets, wearables, and services including App Store, Apple Music, iCloud, Apple TV+, and Apple Pay.",
+    "category": "summarization"
+  },
+  {
+    "question": "What are Apple's main operating segments?",
+    "ground_truth": "Apple's reportable segments are Americas, Europe, Greater China, Japan, and Rest of Asia Pacific.",
+    "category": "factual"
+  },
+  {
+    "question": "What risks does Apple face from its supply chain?",
+    "ground_truth": "Apple depends on single or limited source suppliers for critical components, relies on outsourcing partners primarily in Asia for manufacturing, and faces risks from business interruptions and geopolitical issues.",
+    "category": "factual"
+  },
+  {
+    "question": "What is Apple's fiscal year end date?",
+    "ground_truth": "Apple's fiscal year ends on the last Saturday of September each year.",
+    "category": "factual"
+  },
+  {
+    "question": "What legal and regulatory risks does Apple face?",
+    "ground_truth": "Apple faces risks from antitrust investigations, app store regulatory scrutiny, tax disputes, intellectual property litigation, and evolving privacy regulations globally.",
+    "category": "factual"
+  },
+  {
+    "question": "How does Apple approach competition in global markets?",
+    "ground_truth": "Apple competes through continuous R&D investment, innovative product design, strong ecosystem integration, premium brand positioning, and expansion of services revenue.",
+    "category": "multi_hop"
+  },
+  {
+    "question": "What cybersecurity risks does Apple acknowledge?",
+    "ground_truth": "Apple faces significant cybersecurity risks due to its high profile, including hacking, ransomware, employee errors, and insufficient insurance coverage for data security incidents.",
+    "category": "factual"
+  },
+  {
+    "question": "Summarise Apple overall business strategy and operations",
+    "ground_truth": "Apple designs, manufactures, and markets consumer electronics and software. It operates globally across five geographic segments, generates revenue from hardware products and a growing services business, and competes through product innovation and ecosystem lock-in.",
+    "category": "summarization"
+  }
+]
