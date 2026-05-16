@@ -64,7 +64,9 @@ class ValidationAgent:
         )
 
         try:
-            data = json.loads(raw.strip())
+            # Strip markdown code fences if LLM wraps the JSON
+            clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            data = json.loads(clean)
             passed = bool(data.get("passed", False))
             unsupported = data.get("unsupported_claims", [])
             feedback = data.get("feedback", "")

@@ -41,7 +41,8 @@ class RetrievalGrader:
             max_tokens=128,
         )
         try:
-            data = json.loads(raw.strip())
+            clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            data = json.loads(clean)
             grade = data.get("grade", "Ambiguous")
             if grade not in ("Correct", "Incorrect", "Ambiguous"):
                 grade = "Ambiguous"

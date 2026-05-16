@@ -49,7 +49,8 @@ class IntentAgent:
         )
 
         try:
-            data = json.loads(raw.strip())
+            clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            data = json.loads(clean)
             intent_type = data.get("intent_type", "factual_lookup")
             if intent_type not in VALID_INTENTS:
                 intent_type = "factual_lookup"
