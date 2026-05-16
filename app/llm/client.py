@@ -4,12 +4,21 @@ import logging
 from typing import AsyncIterator, List
 
 import tiktoken
-from openai import AsyncAzureOpenAI, AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from openai import APIError, RateLimitError
 
 from app.core.config import settings
 from app.core.exceptions import LLMError
+from app.core.tracing import observability_status
+
+# Use langfuse drop-in wrapper when Langfuse is configured — gives automatic
+# token tracking, latency, and prompt/completion logging on every LLM call.
+if observability_status()["langfuse_enabled"]:
+    from langfuse.openai import AsyncAzureOpenAI, AsyncOpenAI
+    import logging
+    logging.getLogger(__name__).info("LLMClient using langfuse.openai wrapper (tracing enabled)")
+else:
+    from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
