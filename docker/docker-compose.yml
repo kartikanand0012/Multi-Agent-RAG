@@ -43,6 +43,18 @@ services:
       start_period: 30s
       retries: 3
 
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: rag-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      app:
+        condition: service_healthy
+
 volumes:
   redis_data:
   chroma_data:
