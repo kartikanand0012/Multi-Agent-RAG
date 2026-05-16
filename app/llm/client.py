@@ -68,7 +68,7 @@ class LLMClient:
     @retry(
         retry=retry_if_exception_type((APIError, RateLimitError)),
         wait=wait_exponential(multiplier=1, min=2, max=30),
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(5),
         reraise=True,
     )
     async def complete(
@@ -117,7 +117,7 @@ class LLMClient:
     @retry(
         retry=retry_if_exception_type((APIError, RateLimitError)),
         wait=wait_exponential(multiplier=1, min=2, max=30),
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(5),
         reraise=True,
     )
     async def embed(self, texts: List[str]) -> List[List[float]]:

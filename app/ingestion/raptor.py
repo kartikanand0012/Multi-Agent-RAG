@@ -24,6 +24,9 @@ import numpy as np
 from app.ingestion.chunker import Chunk
 from app.llm.client import llm_client
 from app.llm.prompts import CLUSTER_SUMMARIZER
+from app.core.tracing import get_observe_decorator
+
+observe = get_observe_decorator()
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,9 @@ CHUNKS_PER_CLUSTER = 6       # n_clusters = max(2, n_nodes // CHUNKS_PER_CLUSTER
 MAX_DEPTH = 4
 MIN_NODES_TO_RECURSE = 3     # stop recursion when this few nodes remain
 SUMMARY_MAX_TOKENS = 400
+# Limit concurrent LLM summarization calls to avoid Azure TPM rate limits.
+# With capacity=10 (10k TPM), 3 concurrent calls at ~400 tokens each is safe.
+MAX_CONCURRENT_SUMMARIES = 3
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -71,6 +77,7 @@ class RAPTORIndexer:
 
     # ── public API ────────────────────────────────────────────────────────────
 
+    @observe(name="raptor_build_tree")
     async def build_tree(self, chunks: List[Chunk]) -> List[RAPTORNode]:
         """Return all nodes (leaves + summaries) that should be stored."""
         logger.info(f"RAPTOR: building tree from {len(chunks)} leaf chunks")
@@ -166,9 +173,11 @@ class RAPTORIndexer:
             return self._summary_cache[cache_key]
 
         prompt = CLUSTER_SUMMARIZER.format(text=combined)
+        # Use strong_model (gpt-4o, 80k TPM) — fast_model's 20k TPM limit
+        # causes bursts when summarizing 20+ clusters concurrently.
         summary = await llm_client.complete(
             messages=[{"role": "user", "content": prompt}],
-            model=llm_client.fast_model,
+            model=llm_client.strong_model,
             max_tokens=SUMMARY_MAX_TOKENS,
             temperature=0.0,
         )
@@ -192,12 +201,15 @@ class RAPTORIndexer:
                 if soft_assignments[i, k] >= GMM_MEMBERSHIP_THRESHOLD:
                     clusters[k].append(node)
 
-        # Summarize each cluster concurrently
+        # Semaphore keeps concurrent LLM calls within Azure TPM limits
+        sem = asyncio.Semaphore(MAX_CONCURRENT_SUMMARIES)
+
         async def summarize_one(cluster_id: int, members: List[RAPTORNode]) -> Optional[RAPTORNode]:
             if not members:
                 return None
-            texts = [m.text for m in members]
-            summary_text = await self._summarize_cluster(texts, target_layer)
+            async with sem:
+                texts = [m.text for m in members]
+                summary_text = await self._summarize_cluster(texts, target_layer)
 
             node_id = hashlib.md5(
                 f"layer{target_layer}_cluster{cluster_id}".encode()
