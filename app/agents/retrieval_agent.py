@@ -117,7 +117,16 @@ class RetrievalAgent:
                 rewritten, notebook_id=notebook_id, k_final=k_final, attempt=attempt + 1
             )
 
-        return self._grader.filter_relevant(grades)
+        relevant = self._grader.filter_relevant(grades)
+        if not relevant:
+            # Grader rejected everything — return top-k by retrieval score as fallback
+            logger.warning(f"Grader returned 0 relevant chunks after {attempt} rewrites; using top-k fallback")
+            top_k = sorted(merged, key=lambda t: t[1], reverse=True)[:k_final]
+            relevant = [
+                GradeResult(text=t, metadata=m, grade="Ambiguous", confidence=s, reason="score fallback")
+                for t, s, m in top_k
+            ]
+        return relevant
 
     async def _generate_variations(self, query: str, n: int = 3) -> List[str]:
         """Generate n rephrasings of the query to improve recall."""

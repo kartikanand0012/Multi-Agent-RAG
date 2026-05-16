@@ -1,11 +1,9 @@
-import axios from 'axios';
+import { apiClient, tokenStore } from './auth';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
-const client = axios.create({ baseURL: BASE, timeout: 120000 });
-
-// ── Health ────────────────────────────────────────────────────────────────────
-export const fetchHealth = () => client.get('/health').then(r => r.data);
+// ── Health (public) ────────────────────────────────────────────────────────────
+export const fetchHealth = () => apiClient.get('/health').then(r => r.data);
 
 // ── Upload ────────────────────────────────────────────────────────────────────
 export const uploadFile = (file, notebookId, useRaptor = true) => {
@@ -13,29 +11,26 @@ export const uploadFile = (file, notebookId, useRaptor = true) => {
   form.append('file', file);
   form.append('notebook_id', notebookId);
   form.append('use_raptor', String(useRaptor));
-  return client.post('/upload', form).then(r => r.data);
+  return apiClient.post('/upload', form).then(r => r.data);
 };
 
-// ── Query (non-streaming) ─────────────────────────────────────────────────────
-export const queryNotebook = (query, notebookId) =>
-  client.post('/query', { query, notebook_id: notebookId }).then(r => r.data);
-
-// ── Streaming query — returns an AbortController, calls callbacks per event ──
+// ── Streaming query — returns AbortController ─────────────────────────────────
 export const streamQuery = (query, notebookId, callbacks = {}) => {
   const ctrl = new AbortController();
   const { onIntent, onRetrieval, onToken, onValidation, onDone, onError } = callbacks;
 
+  const token = tokenStore.get();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   fetch(`${BASE}/query/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ query, notebook_id: notebookId }),
     signal: ctrl.signal,
   }).then(async res => {
-    if (!res.ok) {
-      onError?.(`HTTP ${res.status}`);
-      return;
-    }
-    const reader = res.body.getReader();
+    if (!res.ok) { onError?.(`HTTP ${res.status}`); return; }
+    const reader  = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -50,13 +45,13 @@ export const streamQuery = (query, notebookId, callbacks = {}) => {
         if (!line.startsWith('data: ')) continue;
         try {
           const event = JSON.parse(line.slice(6));
-          if (event.type === 'intent')      onIntent?.(event);
-          else if (event.type === 'retrieval') onRetrieval?.(event);
-          else if (event.type === 'token')  onToken?.(event.content);
+          if      (event.type === 'intent')     onIntent?.(event);
+          else if (event.type === 'retrieval')  onRetrieval?.(event);
+          else if (event.type === 'token')      onToken?.(event.content);
           else if (event.type === 'validation') onValidation?.(event);
-          else if (event.type === 'done')   onDone?.();
-          else if (event.type === 'error')  onError?.(event.message);
-          else if (event.type === 'warning') onValidation?.({ ...event, warning: true });
+          else if (event.type === 'done')       onDone?.();
+          else if (event.type === 'error')      onError?.(event.message);
+          else if (event.type === 'warning')    onValidation?.({ ...event, warning: true });
         } catch {}
       }
     }
@@ -67,7 +62,12 @@ export const streamQuery = (query, notebookId, callbacks = {}) => {
   return ctrl;
 };
 
-// ── Notebook ──────────────────────────────────────────────────────────────────
-export const fetchStats   = id => client.get(`/notebook/${id}/stats`).then(r => r.data);
-export const fetchMap     = id => client.get(`/notebook/${id}/map`).then(r => r.data);
-export const deleteNotebook = id => client.delete(`/notebook/${id}`).then(r => r.data);
+// ── Notebooks (CRUD) ──────────────────────────────────────────────────────────
+export const fetchNotebooks    = ()           => apiClient.get('/notebooks').then(r => r.data);
+export const createNotebook    = (id, name)   => apiClient.post('/notebooks', { id, name }).then(r => r.data);
+export const renameNotebook    = (id, name)   => apiClient.patch(`/notebooks/${id}`, { name }).then(r => r.data);
+export const deleteNotebook    = (id)         => apiClient.delete(`/notebooks/${id}`);
+
+// ── Notebook data ─────────────────────────────────────────────────────────────
+export const fetchStats = id  => apiClient.get(`/notebook/${id}/stats`).then(r => r.data);
+export const fetchMap   = id  => apiClient.get(`/notebook/${id}/map`).then(r => r.data);

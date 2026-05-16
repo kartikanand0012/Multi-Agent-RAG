@@ -103,14 +103,17 @@ class LLMClient:
         """Stream tokens one chunk at a time."""
         model = model or self._gpt4o
         try:
-            async with self._client.chat.completions.stream(
+            response = await self._client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-            ) as stream:
-                async for text in stream.text_stream:
-                    yield text
+                stream=True,
+            )
+            async for chunk in response:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield delta
         except Exception as e:
             raise LLMError(f"Streaming error: {e}") from e
 

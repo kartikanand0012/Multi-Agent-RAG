@@ -1,57 +1,70 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import AuthPage from './components/AuthPage';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import NotebookView from './components/NotebookView';
 import Settings from './components/Settings';
 import UploadModal from './components/UploadModal';
 import Icon from './components/Icons';
+import { createNotebook, deleteNotebook, fetchNotebooks } from './services/api';
 
-// Persist notebooks in localStorage so they survive page refresh
-const STORAGE_KEY = 'rag-studio-notebooks';
-const loadNotebooks = () => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-  catch { return []; }
-};
-const saveNotebooks = nbs => localStorage.setItem(STORAGE_KEY, JSON.stringify(nbs));
+// ── Inner app (requires auth) ─────────────────────────────────────────────────
+function AppInner() {
+  const { user, logout } = useAuth();
+  const [notebooks, setNotebooks] = useState([]);
+  const [activeId, setActiveId]   = useState(null);
+  const [route, setRoute]         = useState('home');
+  const [modal, setModal]         = useState(null);
+  const [nbLoading, setNbLoading] = useState(true);
 
-export default function App() {
-  const [notebooks, setNotebooks] = useState(loadNotebooks);
-  const [activeId, setActiveId] = useState(notebooks[0]?.id || null);
-  const [route, setRoute] = useState(notebooks.length ? 'notebook' : 'home');
-  const [modal, setModal] = useState(null);
-
-  const update = nbs => { setNotebooks(nbs); saveNotebooks(nbs); };
+  // Load notebooks from server
+  useEffect(() => {
+    setNbLoading(true);
+    fetchNotebooks()
+      .then(nbs => {
+        const mapped = nbs.map(n => ({
+          id:          n.id,
+          name:        n.name,
+          docCount:    n.doc_count,
+          lastQueried: new Date(n.updated_at).toLocaleDateString(),
+        }));
+        setNotebooks(mapped);
+        if (mapped.length && !activeId) {
+          setActiveId(mapped[0].id);
+          setRoute('notebook');
+        }
+      })
+      .catch(() => {})
+      .finally(() => setNbLoading(false));
+  }, [user]);
 
   const activeNotebook = notebooks.find(n => n.id === activeId);
 
   const handleSelect = id => { setActiveId(id); setRoute('notebook'); };
 
-  const handleDelete = id => {
+  const handleDelete = async id => {
+    try { await deleteNotebook(id); } catch {}
     const next = notebooks.filter(n => n.id !== id);
-    update(next);
+    setNotebooks(next);
     if (activeId === id) {
       setActiveId(next[0]?.id || null);
       setRoute(next.length ? 'notebook' : 'home');
     }
   };
 
-  const handleModalComplete = res => {
+  const handleModalComplete = async res => {
     if (res.newNotebook) {
-      const nb = {
-        id: res.notebookId,
-        name: res.newNotebook,
-        docCount: res.files.length,
-        lastQueried: 'just now',
-      };
-      const updated = [nb, ...notebooks];
-      update(updated);
-      setActiveId(nb.id);
-      setRoute('notebook');
+      try {
+        const nb = await createNotebook(res.notebookId, res.newNotebook);
+        const mapped = { id: nb.id, name: nb.name, docCount: res.files.length, lastQueried: 'just now' };
+        setNotebooks(prev => [mapped, ...prev]);
+        setActiveId(nb.id);
+        setRoute('notebook');
+      } catch {}
     } else if (activeNotebook) {
-      update(notebooks.map(n =>
-        n.id === activeNotebook.id
-          ? { ...n, docCount: n.docCount + res.files.length, lastQueried: 'just now' }
-          : n
+      setNotebooks(prev => prev.map(n =>
+        n.id === activeNotebook.id ? { ...n, docCount: n.docCount + res.files.length, lastQueried: 'just now' } : n
       ));
     }
     setModal(null);
@@ -80,7 +93,14 @@ export default function App() {
           />
         )}
         {route === 'notebook' && !activeNotebook && <Dashboard onNewNotebook={() => setModal('new')}/>}
-        {route === 'settings' && <Settings onClearAll={() => { update([]); setActiveId(null); setRoute('home'); }}/>}
+        {route === 'settings' && (
+          <Settings onClearAll={async () => {
+            for (const nb of notebooks) {
+              try { await deleteNotebook(nb.id); } catch {}
+            }
+            setNotebooks([]); setActiveId(null); setRoute('home');
+          }}/>
+        )}
       </div>
 
       {/* Mobile tab bar */}
@@ -104,5 +124,29 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+// ── Root (handles auth gate) ──────────────────────────────────────────────────
+function AppRoot() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ height: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)' }}>
+        <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3 }}/>
+      </div>
+    );
+  }
+
+  if (!user) return <AuthPage/>;
+  return <AppInner/>;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoot/>
+    </AuthProvider>
   );
 }

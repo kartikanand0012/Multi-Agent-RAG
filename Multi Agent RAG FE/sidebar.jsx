@@ -1,11 +1,10 @@
-import React from 'react';
-import Icon from './Icons';
-import UserMenu from './UserMenu';
+// Sidebar with notebook list, system health, settings access
+const { useState } = React;
 
-export default function Sidebar({ notebooks, activeId, route, onSelect, onNewNotebook, onDeleteNotebook, onGotoSettings, onGotoHome }) {
+function Sidebar({ notebooks, activeId, route, onSelect, onNewNotebook, onDeleteNotebook, onGotoSettings, onGotoHome }) {
   return (
     <aside className="sidebar">
-      <button className="sb-logo" onClick={onGotoHome}>
+      <button className="sb-logo" onClick={onGotoHome} style={{cursor:'pointer'}}>
         <div className="sb-logo-mark">
           <Icon name="sparkles" size={14} stroke={2.5}/>
         </div>
@@ -33,21 +32,25 @@ export default function Sidebar({ notebooks, activeId, route, onSelect, onNewNot
               <span className="nb-count">{nb.docCount}</span>
             </div>
             <div className="nb-time">{nb.lastQueried}</div>
-            <button className="nb-del" onClick={e => { e.stopPropagation(); onDeleteNotebook(nb.id); }} title="Delete">
+            <button className="nb-del" onClick={(e) => { e.stopPropagation(); onDeleteNotebook(nb.id); }} title="Delete notebook">
               <Icon name="trash" size={14}/>
             </button>
           </div>
         ))}
-        {notebooks.length === 0 && (
-          <div style={{ padding: '12px 8px', color: 'var(--text-2)', fontSize: 13 }}>No notebooks yet</div>
-        )}
       </div>
 
       <div className="sb-footer">
-        <UserMenu/>
+        <div className="sys-health">
+          <span className="sys-dot"></span>
+          <span>All systems operational</span>
+        </div>
         <div className="sb-bottom">
-          <div className="sb-version">v2.0.0</div>
-          <button className={"sb-gear " + (route === 'settings' ? 'active' : '')} onClick={onGotoSettings} title="Settings">
+          <div className="sb-version">v1.0.0</div>
+          <button
+            className={"sb-gear " + (route === 'settings' ? 'active' : '')}
+            onClick={onGotoSettings}
+            title="Settings"
+          >
             <Icon name="settings" size={16}/>
           </button>
         </div>
@@ -55,3 +58,5 @@ export default function Sidebar({ notebooks, activeId, route, onSelect, onNewNot
     </aside>
   );
 }
+
+window.Sidebar = Sidebar;

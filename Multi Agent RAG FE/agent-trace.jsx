@@ -1,8 +1,5 @@
-import React from 'react';
-import Icon from './Icons';
-
-export default function AgentTrace({ trace, onClose }) {
-  const rows = trace?.rows || [];
+function AgentTrace({ trace, onClose }) {
+  const rows = trace.rows || [];
   return (
     <div className="trace">
       <div className="trace-head">
@@ -15,7 +12,7 @@ export default function AgentTrace({ trace, onClose }) {
         {rows.map((r, i) => (
           <div key={i} className={"trace-row " + (r.passed ? 'pass' : '')}>
             <div className="trace-row-main">
-              <div className="trace-num">{i + 1}</div>
+              <div className="trace-num">{i+1}</div>
               <div className="trace-name">{r.name}</div>
               <div className="trace-pills">
                 {r.badges.map((b, j) => (
@@ -24,7 +21,7 @@ export default function AgentTrace({ trace, onClose }) {
               </div>
               <div className="trace-time">{r.timing}</div>
             </div>
-            {r.subs?.length > 0 && (
+            {r.subs && r.subs.length > 0 && (
               <div className="trace-sub">
                 {r.subs.map((s, j) => (
                   <div key={j}><span className="arrow">╰─</span> {s}</div>
@@ -35,15 +32,15 @@ export default function AgentTrace({ trace, onClose }) {
         ))}
       </div>
       <div className="trace-foot">
-        <span>Total: <b style={{ color: 'var(--text)' }}>{trace?.total || '—'}</b></span>
+        <span>Total: <b style={{color:'var(--text)'}}>{trace.total}</b></span>
         <span>·</span>
-        <span>Trace ID: <span style={{ color: 'var(--text)' }}>{trace?.traceId || 'see Langfuse'}</span></span>
-        {trace?.traceId && (
-          <a href={`https://cloud.langfuse.com/trace/${trace.traceId}`} target="_blank" rel="noreferrer">
-            Open in Langfuse <Icon name="externalLink" size={11}/>
-          </a>
-        )}
+        <span>Trace ID: <span style={{color:'var(--text)'}}>{trace.traceId}</span></span>
+        <a href="#" onClick={(e) => e.preventDefault()}>
+          Open in Langfuse <Icon name="externalLink" size={11}/>
+        </a>
       </div>
     </div>
   );
 }
+
+window.AgentTrace = AgentTrace;

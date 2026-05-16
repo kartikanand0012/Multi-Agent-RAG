@@ -22,9 +22,12 @@ DEFAULT_NOTEBOOK = "default"
 
 
 def _collection_name(notebook_id: str) -> str:
-    # ChromaDB collection names must be 3-63 chars, alphanumeric + hyphens
+    import re
+    # ChromaDB: 3-63 chars, alphanumeric + hyphens, must start/end with alphanumeric
     safe = "".join(c if c.isalnum() or c == "-" else "-" for c in notebook_id)
-    return f"rag-{safe}"[:63]
+    safe = re.sub(r"-+", "-", safe).strip("-")
+    name = f"rag-{safe}"[:63].rstrip("-")
+    return name
 
 
 class VectorStore:
