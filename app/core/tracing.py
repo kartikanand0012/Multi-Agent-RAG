@@ -1,98 +1,54 @@
-"""Langfuse observability layer.
+"""Langfuse v4 observability layer.
 
-Architecture:
-  - One TRACE per user query (full journey: Intent → Retrieval → Reasoning → Validation)
-  - One SPAN per agent (automatic via @observe decorator)
-  - LLM calls auto-traced with tokens + latency via langfuse.openai drop-in wrapper
+In Langfuse v4, the primary mechanism is the @observe decorator:
+  - @observe(name="pipeline") on the top-level function → creates a TRACE
+  - @observe(name="intent_agent") on each agent → creates a nested SPAN
+  - langfuse.openai drop-in wrapper → auto-creates GENERATION spans with tokens
 
-Graceful degradation: if LANGFUSE_PUBLIC_KEY is not set, all functions are no-ops
-and the system runs normally without tracing.
+Graceful degradation: if LANGFUSE_PUBLIC_KEY is not set, all tracing is skipped
+and the system runs normally.
 """
 from __future__ import annotations
 
 import logging
 import os
-from contextvars import ContextVar
 from typing import Optional
+
+from dotenv import load_dotenv
+
+load_dotenv()  # ensure .env is loaded before reading env vars
 
 logger = logging.getLogger(__name__)
 
-# Holds the active Langfuse trace for the current async task.
-# contextvars are safe across asyncio — each coroutine tree gets its own value.
-_current_trace_id: ContextVar[Optional[str]] = ContextVar("trace_id", default=None)
+_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+_langfuse_enabled = bool(_PUBLIC_KEY and _SECRET_KEY)
 
-_langfuse_enabled = bool(os.getenv("LANGFUSE_PUBLIC_KEY"))
+# Singleton Langfuse client — only created when credentials are present
+_lf = None
 
 
-def _get_client():
-    """Lazily return the Langfuse client, or None if not configured."""
+def _get_lf():
+    global _lf
     if not _langfuse_enabled:
         return None
-    try:
-        from langfuse import get_client
-        return get_client()
-    except Exception as e:
-        logger.warning(f"Langfuse client unavailable: {e}")
-        return None
+    if _lf is None:
+        try:
+            from langfuse import Langfuse
+            _lf = Langfuse(public_key=_PUBLIC_KEY, secret_key=_SECRET_KEY, host=_HOST)
+        except Exception as e:
+            logger.warning(f"Langfuse init failed: {e}")
+    return _lf
 
 
-def start_trace(query: str, session_id: str | None = None) -> Optional[str]:
-    """
-    Open a new Langfuse trace for one user query.
-    Returns the trace_id (used to attach scores later), or None if disabled.
-    """
-    client = _get_client()
-    if client is None:
-        return None
-    try:
-        trace = client.trace(
-            name="agentic_rag_pipeline",
-            input={"query": query},
-            session_id=session_id,
-            tags=["capstone", "multi-agent-rag"],
-        )
-        _current_trace_id.set(trace.id)
-        logger.debug(f"Langfuse trace started: {trace.id}")
-        return trace.id
-    except Exception as e:
-        logger.warning(f"Failed to start trace: {e}")
-        return None
-
-
-def end_trace(trace_id: str | None, output: str, metadata: dict | None = None) -> None:
-    """Close the trace with the final response and any quality metadata."""
-    if not trace_id:
-        return
-    client = _get_client()
-    if client is None:
-        return
-    try:
-        client.trace(id=trace_id, output=output, metadata=metadata or {})
-        client.flush()
-    except Exception as e:
-        logger.warning(f"Failed to end trace: {e}")
-
-
-def score_trace(trace_id: str | None, name: str, value: float, comment: str = "") -> None:
-    """
-    Attach an evaluation score to a trace (e.g. faithfulness=0.91).
-    Called by the RAGAS evaluator in Phase 5.
-    """
-    if not trace_id:
-        return
-    client = _get_client()
-    if client is None:
-        return
-    try:
-        client.score(trace_id=trace_id, name=name, value=value, comment=comment)
-    except Exception as e:
-        logger.warning(f"Failed to score trace: {e}")
-
+# ── decorator ─────────────────────────────────────────────────────────────────
 
 def get_observe_decorator():
     """
-    Returns the @observe decorator if Langfuse is enabled, otherwise a pass-through.
-    Usage in agents:
+    Returns the Langfuse @observe decorator when enabled, else a no-op.
+
+    Usage in any agent:
         from app.core.tracing import get_observe_decorator
         observe = get_observe_decorator()
 
@@ -106,7 +62,6 @@ def get_observe_decorator():
         except Exception:
             pass
 
-    # No-op decorator when Langfuse is not configured
     def _noop(name: str | None = None, **kwargs):
         def decorator(fn):
             return fn
@@ -115,10 +70,69 @@ def get_observe_decorator():
     return _noop
 
 
-# ── status helper ─────────────────────────────────────────────────────────────
+# ── trace helpers ─────────────────────────────────────────────────────────────
+
+def get_current_trace_id() -> Optional[str]:
+    """
+    Returns the active trace ID when called inside an @observe-decorated function.
+    Used by agents to attach metadata to the current trace.
+    """
+    lf = _get_lf()
+    if lf is None:
+        return None
+    try:
+        return lf.get_current_trace_id()
+    except Exception:
+        return None
+
+
+def set_trace_io(input: dict | None = None, output: str | None = None) -> None:
+    """Set the input/output on the current trace (called from pipeline entry point)."""
+    lf = _get_lf()
+    if lf is None:
+        return
+    try:
+        kwargs = {}
+        if input is not None:
+            kwargs["input"] = input
+        if output is not None:
+            kwargs["output"] = output
+        lf.set_current_trace_io(**kwargs)
+    except Exception as e:
+        logger.debug(f"set_trace_io failed: {e}")
+
+
+def score_trace(trace_id: str | None, name: str, value: float, comment: str = "") -> None:
+    """
+    Attach a quality score to a completed trace.
+    Called by RAGAS evaluator in Phase 5.
+    """
+    if not trace_id:
+        return
+    lf = _get_lf()
+    if lf is None:
+        return
+    try:
+        lf.create_score(trace_id=trace_id, name=name, value=value, comment=comment)
+    except Exception as e:
+        logger.warning(f"score_trace failed: {e}")
+
+
+def flush() -> None:
+    """Flush all pending events to Langfuse (call at shutdown or end of test)."""
+    lf = _get_lf()
+    if lf:
+        try:
+            lf.flush()
+        except Exception:
+            pass
+
+
+# ── status ────────────────────────────────────────────────────────────────────
 
 def observability_status() -> dict:
     return {
         "langfuse_enabled": _langfuse_enabled,
-        "host": os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        "host": _HOST,
+        "auth_ok": _get_lf().auth_check() if _langfuse_enabled else False,
     }
