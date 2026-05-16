@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-app
+  namespace: default
+  labels:
+    app: rag-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-app
+  template:
+    metadata:
+      labels:
+        app: rag-app
+    spec:
+      containers:
+        - name: rag-app
+          image: ragacr.azurecr.io/multi-agent-rag:latest
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          envFrom:
+            - configMapRef:
+                name: rag-config
+            - secretRef:
+                name: rag-secrets
+          volumeMounts:
+            - name: chroma-storage
+              mountPath: /app/chroma_db
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: chroma-storage
+          persistentVolumeClaim:
+            claimName: chroma-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chroma-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Redis deployment for AKS
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-redis
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-redis
+  template:
+    metadata:
+      labels:
+        app: rag-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rag-config
+  namespace: default
+data:
+  CHROMA_PERSIST_DIR: "/app/chroma_db"
+  LOG_LEVEL: "INFO"
+  ENVIRONMENT: "production"
+  REDIS_URL: "redis://rag-redis:6379"
+  AZURE_OPENAI_API_VERSION: "2024-08-01-preview"
+  AZURE_DEPLOYMENT_GPT4O: "gpt-4o"
+  AZURE_DEPLOYMENT_GPT4O_MINI: "gpt-4o-2"
+  AZURE_DEPLOYMENT_EMBEDDING: "text-embedding-3-large"
