@@ -1,0 +1,27 @@
+venv/
+.env
+.env.*
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.git/
+.github/
+chroma_db/
+logs/
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+data/raw/
+data/processed/
+*.db
+frontend/node_modules/
+frontend/dist/
+k8s/
+docs/
+tests/
+notebooks/
+scripts/
+Multi\ Agent\ RAG\ FE/
+*.zip
