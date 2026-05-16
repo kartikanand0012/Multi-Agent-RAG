@@ -26,7 +26,6 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Copy application code
 COPY app/ ./app/
-COPY data/eval/ ./data/eval/
 
 # Create writable dirs for ChromaDB and logs
 RUN mkdir -p chroma_db logs data/raw data/processed && \
