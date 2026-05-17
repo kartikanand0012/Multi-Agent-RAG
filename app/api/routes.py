@@ -33,12 +33,31 @@ router = APIRouter()
 # ── Ownership helper ──────────────────────────────────────────────────────────
 
 async def _assert_owns(notebook_id: str, user: User, db: AsyncSession) -> None:
-    """403 if the notebook doesn't belong to this user."""
-    result = await db.execute(
-        select(Notebook).where(Notebook.id == notebook_id, Notebook.user_id == user.id)
-    )
-    if not result.scalar_one_or_none():
+    """403 if the notebook exists and belongs to a different user."""
+    result = await db.execute(select(Notebook).where(Notebook.id == notebook_id))
+    nb = result.scalar_one_or_none()
+    if nb and nb.user_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied to this notebook")
+
+
+async def _get_or_create_notebook(
+    notebook_id: str, user: User, db: AsyncSession, display_name: str | None = None
+) -> Notebook:
+    """Return existing notebook (owned by user) or create it on the fly."""
+    result = await db.execute(select(Notebook).where(Notebook.id == notebook_id))
+    nb = result.scalar_one_or_none()
+    if nb:
+        if nb.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Access denied to this notebook")
+        return nb
+    nb = Notebook(
+        id=notebook_id,
+        name=display_name or notebook_id.replace("-", " ").title(),
+        user_id=user.id,
+    )
+    db.add(nb)
+    await db.flush()
+    return nb
 
 
 # ── Health (public) ────────────────────────────────────────────────────────────
@@ -75,7 +94,7 @@ async def upload(
     if suffix not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported file type '{suffix}'.")
 
-    await _assert_owns(notebook_id, current_user, db)
+    nb = await _get_or_create_notebook(notebook_id, current_user, db)
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         content = await file.read()
@@ -91,11 +110,7 @@ async def upload(
     processing_ms = int((time.monotonic() - t0) * 1000)
     query_cache.invalidate(notebook_id)
 
-    # Update doc count on notebook
-    nb_result = await db.execute(select(Notebook).where(Notebook.id == notebook_id))
-    nb = nb_result.scalar_one_or_none()
-    if nb:
-        nb.doc_count = nb.doc_count + 1
+    nb.doc_count = nb.doc_count + 1
 
     # Log upload event (background — no latency impact)
     event = UploadEvent(
