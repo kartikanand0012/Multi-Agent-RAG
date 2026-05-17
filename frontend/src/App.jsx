@@ -11,16 +11,15 @@ import { createNotebook, deleteNotebook, fetchNotebooks } from './services/api';
 
 // ── Inner app (requires auth) ─────────────────────────────────────────────────
 function AppInner() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [notebooks, setNotebooks] = useState([]);
   const [activeId, setActiveId]   = useState(null);
   const [route, setRoute]         = useState('home');
   const [modal, setModal]         = useState(null);
-  const [nbLoading, setNbLoading] = useState(true);
 
-  // Load notebooks from server
+  // Load notebooks from server whenever the logged-in user changes
   useEffect(() => {
-    setNbLoading(true);
+    if (!user) return;
     fetchNotebooks()
       .then(nbs => {
         const mapped = nbs.map(n => ({
@@ -30,13 +29,12 @@ function AppInner() {
           lastQueried: new Date(n.updated_at).toLocaleDateString(),
         }));
         setNotebooks(mapped);
-        if (mapped.length && !activeId) {
-          setActiveId(mapped[0].id);
+        if (mapped.length) {
+          setActiveId(id => id || mapped[0].id);
           setRoute('notebook');
         }
       })
-      .catch(() => {})
-      .finally(() => setNbLoading(false));
+      .catch(() => {});
   }, [user]);
 
   const activeNotebook = notebooks.find(n => n.id === activeId);
@@ -44,7 +42,7 @@ function AppInner() {
   const handleSelect = id => { setActiveId(id); setRoute('notebook'); };
 
   const handleDelete = async id => {
-    try { await deleteNotebook(id); } catch {}
+    try { await deleteNotebook(id); } catch (_) { /* ignore — remove from UI regardless */ }
     const next = notebooks.filter(n => n.id !== id);
     setNotebooks(next);
     if (activeId === id) {
@@ -61,7 +59,7 @@ function AppInner() {
         setNotebooks(prev => [mapped, ...prev]);
         setActiveId(nb.id);
         setRoute('notebook');
-      } catch {}
+      } catch (_) { /* notebook already exists or network error */ }
     } else if (activeNotebook) {
       setNotebooks(prev => prev.map(n =>
         n.id === activeNotebook.id ? { ...n, docCount: n.docCount + res.files.length, lastQueried: 'just now' } : n
@@ -96,7 +94,7 @@ function AppInner() {
         {route === 'settings' && (
           <Settings onClearAll={async () => {
             for (const nb of notebooks) {
-              try { await deleteNotebook(nb.id); } catch {}
+              try { await deleteNotebook(nb.id); } catch (_) { /* ignore */ }
             }
             setNotebooks([]); setActiveId(null); setRoute('home');
           }}/>

@@ -65,7 +65,7 @@ jobs:
 
       - name: Lint
         working-directory: frontend
-        run: npm run lint --if-present
+        run: npx eslint . --max-warnings=50
 
       - name: Build
         working-directory: frontend

@@ -1,3 +1,4 @@
+// eslint-disable-next-line react-refresh/only-export-components
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { authApi, tokenStore } from '../services/auth';
 
@@ -52,6 +53,7 @@ export function AuthProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
