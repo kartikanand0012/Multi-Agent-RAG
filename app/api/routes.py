@@ -234,7 +234,14 @@ async def query_stream(
 
         except Exception as e:
             logger.error(f"Stream error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            msg = str(e)
+            if "DeploymentNotFound" in msg or "deployment" in msg.lower() and "not exist" in msg.lower():
+                msg = "AI model deployment not found. Check AZURE_OPENAI_DEPLOYMENT_GPT4O and AZURE_OPENAI_DEPLOYMENT_GPT4O_MINI env vars in Railway match your Azure deployment names."
+            elif "AuthenticationError" in msg or "401" in msg:
+                msg = "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY in Railway."
+            elif "RateLimitError" in msg or "429" in msg:
+                msg = "Azure OpenAI rate limit hit. Wait a moment and try again."
+            yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
         finally:
             # Persist analytics (best-effort — don't raise if it fails)
             try:
