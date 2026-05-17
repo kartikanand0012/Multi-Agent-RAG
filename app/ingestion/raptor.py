@@ -2,7 +2,7 @@
 
 Algorithm per layer:
   1. Embed all nodes
-  2. UMAP dimensionality reduction (cosine, 10 dims)
+  2. PCA dimensionality reduction (10 dims)
   3. Gaussian Mixture Model soft clustering
   4. LLM summarizes each cluster → new summary nodes
   5. Recurse on summary nodes until ≤ 2 remain or max_depth reached
@@ -31,8 +31,7 @@ observe = get_observe_decorator()
 logger = logging.getLogger(__name__)
 
 # ── tuneable constants ───────────────────────────────────────────────────────
-UMAP_DIMS = 10
-UMAP_NEIGHBORS = 15          # reduced if corpus is small
+PCA_DIMS = 10
 GMM_MEMBERSHIP_THRESHOLD = 0.1
 CHUNKS_PER_CLUSTER = 6       # n_clusters = max(2, n_nodes // CHUNKS_PER_CLUSTER)
 MAX_DEPTH = 4
@@ -128,24 +127,16 @@ class RAPTORIndexer:
         return np.array(all_embeddings, dtype=np.float32)
 
     def _umap_reduce(self, embeddings: np.ndarray) -> np.ndarray:
-        """Reduce high-dim embeddings to UMAP_DIMS for clustering."""
-        from umap import UMAP
+        """Reduce high-dim embeddings via PCA for clustering."""
+        from sklearn.decomposition import PCA
 
-        n = len(embeddings)
-        n_neighbors = min(UMAP_NEIGHBORS, n - 1)
-        n_components = min(UMAP_DIMS, n - 2)
+        n, d = embeddings.shape
+        n_components = min(PCA_DIMS, n - 1, d)
 
         if n_components < 2:
-            return embeddings   # too few nodes to reduce
+            return embeddings
 
-        reducer = UMAP(
-            n_components=n_components,
-            n_neighbors=n_neighbors,
-            metric="cosine",
-            random_state=42,
-            low_memory=True,
-        )
-        return reducer.fit_transform(embeddings)
+        return PCA(n_components=n_components, random_state=42).fit_transform(embeddings)
 
     def _gmm_cluster(self, reduced: np.ndarray, n_nodes: int) -> np.ndarray:
         """Return soft assignment matrix of shape (n_nodes, n_clusters)."""
