@@ -8,13 +8,12 @@ from typing import List
 from app.ingestion.chunker import DocumentChunker
 from app.ingestion.loaders import DocumentLoader
 from app.ingestion.raptor import RAPTORIndexer
-from app.retrieval.vector_store import VectorStore, DEFAULT_NOTEBOOK
+from app.retrieval.vector_store import vector_store as _vector_store, DEFAULT_NOTEBOOK
 
 logger = logging.getLogger(__name__)
 
 _loader = DocumentLoader()
 _chunker = DocumentChunker()
-_vector_store = VectorStore()
 
 
 async def ingest_file(
