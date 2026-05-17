@@ -6,6 +6,8 @@ users/sessions never bleed into each other — same pattern as NotebookLM.
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import chromadb
@@ -41,11 +43,16 @@ class VectorStore:
     """
 
     def __init__(self) -> None:
+        # Resolve to absolute path and ensure the directory exists
+        # (relative paths fail in Railway because the CWD is unpredictable)
+        persist_dir = str(Path(settings.chroma_persist_dir).resolve())
+        os.makedirs(persist_dir, mode=0o755, exist_ok=True)
+        logger.info(f"ChromaDB persist dir: {persist_dir}")
+
         self._client = chromadb.PersistentClient(
-            path=settings.chroma_persist_dir,
+            path=persist_dir,
             settings=ChromaSettings(anonymized_telemetry=False),
         )
-        # Cache open collection handles
         self._collections: Dict[str, chromadb.Collection] = {}
         logger.info("VectorStore initialised")
 
@@ -179,5 +186,18 @@ class VectorStore:
         logger.info(f"Deleted notebook collection '{name}'")
 
 
-# Module-level singleton
-vector_store = VectorStore()
+# Module-level singleton — fallback to ephemeral client if persistent storage fails
+try:
+    vector_store = VectorStore()
+except Exception as _e:
+    logger.error(f"VectorStore persistent init failed, falling back to ephemeral: {_e}")
+
+    class _EphemeralVectorStore(VectorStore):
+        def __init__(self) -> None:
+            self._client = chromadb.EphemeralClient(
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
+            self._collections: Dict[str, chromadb.Collection] = {}
+            logger.warning("VectorStore using ephemeral client — data will NOT persist across restarts")
+
+    vector_store = _EphemeralVectorStore()
