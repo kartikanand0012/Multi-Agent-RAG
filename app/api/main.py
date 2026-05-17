@@ -57,8 +57,12 @@ def _build_bm25(notebook_id: str) -> None:
 async def lifespan(app: FastAPI):
     logger.info(f"Starting Multi-Agent RAG Studio [{settings.environment}]")
 
-    # Create DB tables on every startup (idempotent — won't overwrite existing data)
-    await create_tables()
+    # Create DB tables — wrapped so a transient DB blip never kills startup
+    try:
+        await create_tables()
+        logger.info("DB tables ready")
+    except Exception as e:
+        logger.error(f"DB table creation failed (non-fatal): {e}")
 
     # Build BM25 indexes for existing notebooks
     try:
@@ -69,10 +73,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"BM25 pre-warm failed: {e}")
 
-    # Compile LangGraph pipeline
-    from app.orchestration.graph import get_graph
-    get_graph()
-    logger.info("LangGraph pipeline ready")
+    # Compile LangGraph pipeline — log error but don't crash
+    try:
+        from app.orchestration.graph import get_graph
+        get_graph()
+        logger.info("LangGraph pipeline ready")
+    except Exception as e:
+        logger.error(f"LangGraph compilation failed (non-fatal): {e}")
 
     yield
 
