@@ -57,9 +57,8 @@ def _build_bm25(notebook_id: str) -> None:
 async def lifespan(app: FastAPI):
     logger.info(f"Starting Multi-Agent RAG Studio [{settings.environment}]")
 
-    # Create DB tables in dev/test; use Alembic in production
-    if settings.environment in ("development", "test"):
-        await create_tables()
+    # Create DB tables on every startup (idempotent — won't overwrite existing data)
+    await create_tables()
 
     # Build BM25 indexes for existing notebooks
     try:
