@@ -7,7 +7,7 @@ import NotebookView from './components/NotebookView';
 import Settings from './components/Settings';
 import UploadModal from './components/UploadModal';
 import Icon from './components/Icons';
-import { createNotebook, deleteNotebook, fetchNotebooks } from './services/api';
+import { deleteNotebook, fetchNotebooks } from './services/api';
 
 // ── Inner app (requires auth) ─────────────────────────────────────────────────
 function AppInner() {
@@ -52,20 +52,20 @@ function AppInner() {
   };
 
   const handleModalComplete = async res => {
-    if (res.newNotebook) {
-      try {
-        const nb = await createNotebook(res.notebookId, res.newNotebook);
-        const mapped = { id: nb.id, name: nb.name, docCount: res.files.length, lastQueried: 'just now' };
-        setNotebooks(prev => [mapped, ...prev]);
-        setActiveId(nb.id);
-        setRoute('notebook');
-      } catch (_) { /* notebook already exists or network error */ }
-    } else if (activeNotebook) {
-      setNotebooks(prev => prev.map(n =>
-        n.id === activeNotebook.id ? { ...n, docCount: n.docCount + res.files.length, lastQueried: 'just now' } : n
-      ));
-    }
     setModal(null);
+    // Refetch from server — upload already created/updated the notebook row
+    try {
+      const nbs = await fetchNotebooks();
+      const mapped = nbs.map(n => ({
+        id:          n.id,
+        name:        n.name,
+        docCount:    n.doc_count,
+        lastQueried: new Date(n.updated_at).toLocaleDateString(),
+      }));
+      setNotebooks(mapped);
+      setActiveId(res.notebookId);
+      setRoute('notebook');
+    } catch (_) {}
   };
 
   return (
