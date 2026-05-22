@@ -23,11 +23,15 @@ async def health():
         n_collections = len(vector_store.list_notebooks())
     except Exception:
         n_collections = 0
+    try:
+        langfuse_ok = observability_status().get("langfuse_enabled", False)
+    except Exception:
+        langfuse_ok = False
     return HealthResponse(
         status="ok",
         redis=query_cache.is_available,
         chromadb_collections=n_collections,
-        langfuse=observability_status()["langfuse_enabled"],
+        langfuse=langfuse_ok,
     )
 
 

@@ -6,6 +6,6 @@ dockerfilePath = "docker/Dockerfile"
 # Single uvicorn worker — Celery handles background work; keep worker=1 to avoid ChromaDB cross-worker conflicts
 startCommand = "sh -c 'python -m alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1'"
 healthcheckPath = "/api/v1/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
