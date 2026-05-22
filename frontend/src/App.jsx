@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
+import * as Sentry from '@sentry/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthPage from './components/AuthPage';
 import Sidebar from './components/Sidebar';
@@ -144,9 +145,36 @@ function AppRoot() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppRoot/>
-      <SpeedInsights/>
-    </AuthProvider>
+    <Sentry.ErrorBoundary fallback={<ErrorFallback/>} showDialog>
+      <AuthProvider>
+        <AppRoot/>
+        <SpeedInsights/>
+      </AuthProvider>
+    </Sentry.ErrorBoundary>
+  );
+}
+
+function ErrorFallback() {
+  return (
+    <div style={{
+      height: '100vh', display: 'grid', placeItems: 'center',
+      background: '#0F1117', color: '#E8EAF0', fontFamily: 'system-ui',
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: 400 }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>Something went wrong</div>
+        <div style={{ color: '#8B90A7', marginBottom: 20 }}>
+          The error has been reported. Try refreshing the page.
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            background: '#6C63FF', color: '#fff', border: 'none',
+            padding: '10px 24px', borderRadius: 6, cursor: 'pointer', fontSize: 14,
+          }}
+        >
+          Refresh
+        </button>
+      </div>
+    </div>
   );
 }
