@@ -1,8 +1,11 @@
 import React from 'react';
 import Icon from './Icons';
 import UserMenu from './UserMenu';
+import { useAuth } from '../context/AuthContext';
 
-export default function Sidebar({ notebooks, activeId, route, onSelect, onNewNotebook, onDeleteNotebook, onGotoSettings, onGotoHome }) {
+export default function Sidebar({ notebooks, activeId, route, onSelect, onNewNotebook, onDeleteNotebook, onGotoSettings, onGotoHome, onGotoAdmin }) {
+  const { user } = useAuth();
+  const isAdmin = user?.profile?.is_admin;
   return (
     <aside className="sidebar">
       <button className="sb-logo" onClick={onGotoHome}>
@@ -47,6 +50,11 @@ export default function Sidebar({ notebooks, activeId, route, onSelect, onNewNot
         <UserMenu/>
         <div className="sb-bottom">
           <div className="sb-version">v2.0.0</div>
+          {isAdmin && (
+            <button className={"sb-gear " + (route === 'admin' ? 'active' : '')} onClick={onGotoAdmin} title="Admin">
+              <Icon name="users" size={16}/>
+            </button>
+          )}
           <button className={"sb-gear " + (route === 'settings' ? 'active' : '')} onClick={onGotoSettings} title="Settings">
             <Icon name="settings" size={16}/>
           </button>

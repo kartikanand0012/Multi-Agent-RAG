@@ -80,3 +80,9 @@ export const deleteNotebook    = (id)         => apiClient.delete(`/notebooks/${
 // ── Notebook data ─────────────────────────────────────────────────────────────
 export const fetchStats = id  => apiClient.get(`/notebook/${id}/stats`).then(r => r.data);
 export const fetchMap   = id  => apiClient.get(`/notebook/${id}/map`).then(r => r.data);
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+export const adminOverview   = ()                        => apiClient.get('/admin/overview').then(r => r.data);
+export const adminUsers      = (limit=50, offset=0)      => apiClient.get('/admin/users', { params: { limit, offset } }).then(r => r.data);
+export const adminUpdateQuota= (userId, max_queries)     => apiClient.patch(`/admin/users/${userId}/quota`, null, { params: { max_queries } }).then(r => r.data);
+export const adminUserDetail = (userId)                  => apiClient.get(`/admin/users/${userId}`).then(r => r.data);

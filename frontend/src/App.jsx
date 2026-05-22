@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import NotebookView from './components/NotebookView';
 import Settings from './components/Settings';
+import AdminDashboard from './components/AdminDashboard';
 import UploadModal from './components/UploadModal';
 import Icon from './components/Icons';
 import { deleteNotebook, fetchNotebooks } from './services/api';
@@ -81,6 +82,7 @@ function AppInner() {
         onDeleteNotebook={handleDelete}
         onGotoSettings={() => setRoute('settings')}
         onGotoHome={() => setRoute('home')}
+        onGotoAdmin={() => setRoute('admin')}
       />
 
       <div className="main">
@@ -101,6 +103,8 @@ function AppInner() {
             setNotebooks([]); setActiveId(null); setRoute('home');
           }}/>
         )}
+        {route === 'admin' && user?.profile?.is_admin && <AdminDashboard/>}
+        {route === 'admin' && !user?.profile?.is_admin && <Dashboard onNewNotebook={() => setModal('new')}/>}
       </div>
 
       {/* Mobile tab bar */}
