@@ -44,9 +44,9 @@ class LLMClient:
                 api_key=settings.azure_openai_api_key,
                 api_version=settings.azure_openai_api_version,
             )
-            self._gpt4o = settings.azure_deployment_gpt4o
-            self._gpt4o_mini = settings.azure_deployment_gpt4o_mini
-            self._embedding_model = settings.azure_deployment_embedding
+            self._gpt4o = settings.azure_openai_deployment_gpt4o
+            self._gpt4o_mini = settings.azure_openai_deployment_gpt4o_mini
+            self._embedding_model = settings.azure_openai_deployment_embedding
             logger.info("LLMClient initialised with Azure OpenAI")
         else:
             self._client = AsyncOpenAI(api_key=settings.openai_api_key)

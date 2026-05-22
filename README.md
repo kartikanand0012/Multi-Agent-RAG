@@ -141,9 +141,9 @@ app/
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI resource endpoint |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI API key |
 | `AZURE_OPENAI_API_VERSION` | API version |
-| `AZURE_DEPLOYMENT_GPT4O` | GPT-4o deployment name (strong model) |
-| `AZURE_DEPLOYMENT_GPT4O_MINI` | Lightweight model deployment name |
-| `AZURE_DEPLOYMENT_EMBEDDING` | Embedding model deployment name |
+| `AZURE_OPENAI_DEPLOYMENT_GPT4O` | GPT-4o deployment name (strong model) |
+| `AZURE_OPENAI_DEPLOYMENT_GPT4O_MINI` | Lightweight model deployment name |
+| `AZURE_OPENAI_DEPLOYMENT_EMBEDDING` | Embedding model deployment name |
 | `REDIS_URL` | Redis connection URL |
 | `LANGFUSE_PUBLIC_KEY` | Langfuse public key (optional) |
 | `LANGFUSE_SECRET_KEY` | Langfuse secret key (optional) |

@@ -16,10 +16,10 @@ class Settings(BaseSettings):
     azure_openai_api_key:     str = ""
     azure_openai_api_version: str = "2024-08-01-preview"
 
-    # Deployment names
-    azure_deployment_gpt4o:       str = "gpt-4o"
-    azure_deployment_gpt4o_mini:  str = "gpt-4o-mini"
-    azure_deployment_embedding:   str = "text-embedding-3-large"
+    # Deployment names — must match the deployment names in the Azure portal
+    azure_openai_deployment_gpt4o:       str = "gpt-4o"
+    azure_openai_deployment_gpt4o_mini:  str = "gpt-4o-mini"
+    azure_openai_deployment_embedding:   str = "text-embedding-3-large"
 
     # ── Direct OpenAI fallback ────────────────────────────────────────────────
     openai_api_key: str = ""

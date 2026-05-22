@@ -10,6 +10,10 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# Disable chromadb posthog telemetry — its capture() signature is broken in
+# some chromadb versions and spams the logs with TypeErrors on startup.
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 

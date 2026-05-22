@@ -29,7 +29,16 @@ export const streamQuery = (query, notebookId, callbacks = {}) => {
     body: JSON.stringify({ query, notebook_id: notebookId }),
     signal: ctrl.signal,
   }).then(async res => {
-    if (!res.ok) { onError?.(`HTTP ${res.status}`); return; }
+    if (!res.ok) {
+      // Try to extract the FastAPI `detail` field — falls back to status text
+      let msg = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.detail) msg = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+      } catch { /* response wasn't JSON */ }
+      onError?.(msg);
+      return;
+    }
     const reader  = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';

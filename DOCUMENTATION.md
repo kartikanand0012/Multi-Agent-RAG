@@ -542,9 +542,9 @@ All configuration via environment variables. Copy `.env.example` to `.env`.
 | `AZURE_OPENAI_API_KEY` | Azure key |
 | `AZURE_OPENAI_ENDPOINT` | `https://yourresource.openai.azure.com/` |
 | `AZURE_OPENAI_API_VERSION` | e.g. `2024-02-01` |
-| `AZURE_DEPLOYMENT_GPT4O` | Deployment name for GPT-4o |
-| `AZURE_DEPLOYMENT_GPT4O_MINI` | Deployment name for GPT-4o-mini |
-| `AZURE_DEPLOYMENT_EMBEDDING` | Deployment name for embedding model |
+| `AZURE_OPENAI_DEPLOYMENT_GPT4O` | Deployment name for GPT-4o |
+| `AZURE_OPENAI_DEPLOYMENT_GPT4O_MINI` | Deployment name for GPT-4o-mini |
+| `AZURE_OPENAI_DEPLOYMENT_EMBEDDING` | Deployment name for embedding model |
 
 ### Infrastructure
 

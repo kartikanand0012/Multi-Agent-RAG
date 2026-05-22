@@ -102,14 +102,14 @@ async def run_evaluation(
         azure_endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
         api_version=settings.azure_openai_api_version,
-        azure_deployment=settings.azure_deployment_gpt4o,
+        azure_deployment=settings.azure_openai_deployment_gpt4o,
         temperature=0,
     )
     embeddings = AzureOpenAIEmbeddings(
         azure_endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
         api_version=settings.azure_openai_api_version,
-        azure_deployment=settings.azure_deployment_embedding,
+        azure_deployment=settings.azure_openai_deployment_embedding,
     )
 
     metrics = [faithfulness, answer_relevancy, context_precision, context_recall]
