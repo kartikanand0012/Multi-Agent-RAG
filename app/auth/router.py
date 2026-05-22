@@ -156,7 +156,7 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
     month_u = (await db.execute(
         select(func.count()).select_from(IngestionJob).where(
             IngestionJob.user_id == current_user.id,
-            IngestionJob.created_at >= month_start,
+            IngestionJob.queued_at >= month_start,   # IngestionJob uses queued_at, not created_at
         )
     )).scalar_one()
 
