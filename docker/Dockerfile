@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 COPY alembic.ini .
 COPY app ./app
+COPY scripts ./scripts
 
 RUN pip install --upgrade pip && \
     pip install --prefix=/install --no-cache-dir -r requirements.txt
@@ -25,6 +26,7 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY --from=builder /build/alembic.ini .
 COPY --from=builder /build/app ./app
+COPY --from=builder /build/scripts ./scripts
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser && \
     mkdir -p chroma_db logs data/raw data/processed && \
