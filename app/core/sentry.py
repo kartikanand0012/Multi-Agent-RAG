@@ -38,8 +38,26 @@ def init_sentry() -> None:
     logger.info("Sentry initialised (DSN configured, environment=%s)", settings.environment)
 
 
+_NOISE_PATTERNS = (
+    "Failed to send telemetry event",   # ChromaDB internal telemetry bug
+    "ClientStartEvent",
+    "ClientCreateCollectionEvent",
+)
+
+
 def _before_send(event: dict, hint: dict) -> dict | None:
-    """Send critical/error events to Telegram before forwarding to Sentry."""
+    """Filter noise and send critical/error events to Telegram before forwarding to Sentry."""
+    # Drop known ChromaDB telemetry errors — their capture() signature is broken
+    # and the error is in ChromaDB's own code, not ours.
+    log_msg = event.get("logentry", {}).get("message", "")
+    exc_val = ""
+    try:
+        exc_val = event["exception"]["values"][0]["value"]
+    except (KeyError, IndexError, TypeError):
+        pass
+    if any(p in log_msg or p in exc_val for p in _NOISE_PATTERNS):
+        return None  # drop — don't send to Sentry
+
     level = event.get("level", "")
     if level in ("error", "fatal"):
         try:
