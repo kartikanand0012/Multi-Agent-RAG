@@ -22,6 +22,5 @@ k8s/
 docs/
 tests/
 notebooks/
-scripts/
 Multi\ Agent\ RAG\ FE/
 *.zip
