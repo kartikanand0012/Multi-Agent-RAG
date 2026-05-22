@@ -198,6 +198,7 @@ input, textarea { font-family: inherit; color: inherit; }
 .main {
   flex: 1;
   min-width: 0;
+  min-height: 0;        /* let inner flex children scroll instead of overflow */
   display: flex;
   position: relative;
 }
@@ -262,8 +263,17 @@ input, textarea { font-family: inherit; color: inherit; }
   flex: 1;
   display: flex;
   min-width: 0;
+  min-height: 0;        /* required so chat-scroll can actually scroll */
+  height: 100%;
 }
-.chat-col { flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--border); }
+.chat-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;        /* same — without this, chat-scroll grows past viewport */
+  border-right: 1px solid var(--border);
+}
 .right-col { flex-shrink: 0; display: flex; flex-direction: column; background: rgba(15,17,23,0.4); }
 
 /* Drag-to-resize handle between chat and right panel */
@@ -298,10 +308,12 @@ input, textarea { font-family: inherit; color: inherit; }
 
 /* Chat */
 .chat-scroll {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
-  padding: 28px 24px 12px;
+  padding: 28px 24px 16px;
   display: flex; flex-direction: column; gap: 22px;
+  scroll-padding-bottom: 24px;
 }
 .msg-user {
   align-self: flex-end;
@@ -386,6 +398,26 @@ input, textarea { font-family: inherit; color: inherit; }
 }
 .msg-expand:hover { background: var(--surface-2); color: var(--text); }
 
+/* Validation feedback (shown when validation_agent flags unsupported claims) */
+.validation-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--warning-dim);
+  border: 1px solid rgba(255, 181, 71, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+.validation-note-head {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--warning);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.validation-note-feedback { color: var(--text-2); line-height: 1.55; margin-bottom: 6px; }
+.validation-note-list { margin: 0; padding-left: 18px; color: var(--text-2); }
+.validation-note-list li { margin: 2px 0; line-height: 1.5; }
+
 /* checkmark animation */
 .check-anim {
   display: inline-grid; place-items: center;
@@ -450,6 +482,7 @@ input, textarea { font-family: inherit; color: inherit; }
 
 /* Input */
 .input-bar {
+  flex-shrink: 0;       /* never let the textarea row collapse below its content */
   border-top: 1px solid var(--border);
   padding: 14px 20px 16px;
   background: var(--surface-glass);
@@ -1066,7 +1099,7 @@ input, textarea { font-family: inherit; color: inherit; }
 }
 @media (max-width: 768px) {
   /* Topbar: icon-only buttons, hide meta */
-  .topbar { height: 50px; padding: 0 10px; gap: 6px; }
+  .topbar { height: 50px; padding: 0 10px; gap: 6px; flex-shrink: 0; }
   .topbar .btn-label { display: none; }
   .topbar .btn-outline { padding: 7px 9px; gap: 0; min-width: 34px; justify-content: center; }
   .tb-meta { display: none; }
@@ -1082,6 +1115,9 @@ input, textarea { font-family: inherit; color: inherit; }
     border-top: 1px solid var(--border);
     z-index: 40;
     padding: 6px 12px;
+    /* respect iOS safe area so the tabbar isn't hidden behind the home indicator */
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+    height: calc(60px + env(safe-area-inset-bottom));
   }
   .mtb-btn {
     flex: 1;
@@ -1092,8 +1128,14 @@ input, textarea { font-family: inherit; color: inherit; }
     transition: all .2s ease;
   }
   .mtb-btn.active { color: var(--primary-bright); background: var(--primary-dim); }
-  .app { padding-bottom: 60px; }
-  .chat-scroll { padding: 18px 14px 12px; }
+
+  /* Reserve space for the fixed tabbar so the input bar sits above it, not under */
+  .app {
+    height: 100dvh;     /* dvh = dynamic viewport, accounts for mobile URL bar */
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+
+  .chat-scroll { padding: 18px 14px 16px; }
   .topbar { padding: 0 14px; }
   .input-bar { padding: 10px 14px 12px; }
   .msg-user, .msg-ai, .pipeline-card { max-width: 95%; }

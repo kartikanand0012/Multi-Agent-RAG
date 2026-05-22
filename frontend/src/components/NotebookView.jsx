@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Icon from './Icons';
 import AgentTrace from './AgentTrace';
 import KnowledgeMap from './KnowledgeMap';
@@ -61,26 +61,20 @@ function StatsTab({ stats }) {
   );
 }
 
-function SourcesTab({ notebookId }) {
-  const [sources, setSources] = React.useState(null);
+function SourcesTab({ mapData, loading }) {
+  const sources = useMemo(() => {
+    if (!mapData?.nodes) return null;
+    const srcMap = {};
+    mapData.nodes.filter(n => n.layer === 0).forEach(n => {
+      if (!n.source) return;
+      const name = n.source.split(/[\\/]/).pop();
+      if (!srcMap[name]) srcMap[name] = { name, chunks: 0 };
+      srcMap[name].chunks++;
+    });
+    return Object.values(srcMap);
+  }, [mapData]);
 
-  React.useEffect(() => {
-    if (!notebookId) return;
-    fetchMap(notebookId)
-      .then(d => {
-        const srcMap = {};
-        (d.nodes || []).filter(n => n.layer === 0).forEach(n => {
-          if (!n.source) return;
-          const name = n.source.split(/[\\/]/).pop();
-          if (!srcMap[name]) srcMap[name] = { name, chunks: 0 };
-          srcMap[name].chunks++;
-        });
-        setSources(Object.values(srcMap));
-      })
-      .catch(() => setSources([]));
-  }, [notebookId]);
-
-  if (!sources) return <div className="tab-empty">Loading sources…</div>;
+  if (loading || !sources) return <div className="tab-empty">Loading sources…</div>;
 
   if (!sources.length) return (
     <div className="sources">
@@ -118,6 +112,9 @@ export default function NotebookView({ notebook, onAddDocument }) {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(null);
   const [stats, setStats] = useState(null);
+  const [mapData, setMapData] = useState(null);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState(null);
   const [rightOpen, setRightOpen] = useState(false);
   const [rightWidth, setRightWidth] = useState(380);
   const scrollRef  = useRef(null);
@@ -145,10 +142,24 @@ export default function NotebookView({ notebook, onAddDocument }) {
     fetchStats(notebook.id).then(setStats).catch(() => setStats(null));
   }, [notebook.id, notebook.docCount]);
 
+  // Fetch map once per notebook (and refetch when docCount changes after upload).
+  // Both KnowledgeMap and SourcesTab consume this — avoids two /map calls per tab switch.
+  useEffect(() => {
+    if (!notebook.id) return;
+    let cancelled = false;
+    setMapLoading(true); setMapError(null);
+    fetchMap(notebook.id)
+      .then(d => { if (!cancelled) { setMapData(d); setMapLoading(false); } })
+      .catch(e => { if (!cancelled) { setMapError(e.message || String(e)); setMapLoading(false); } });
+    return () => { cancelled = true; };
+  }, [notebook.id, notebook.docCount]);
+
   useEffect(() => {
     if (scrollRef.current)
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, streaming?.text]);
+    // include streaming.step so the pipeline card stays in view as it animates
+    // through Intent → Retrieval → Reasoning → Validation, even before tokens arrive
+  }, [messages, streaming?.text, streaming?.step]);
 
   const toggleTrace = id =>
     setOpenTraces(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -159,7 +170,10 @@ export default function NotebookView({ notebook, onAddDocument }) {
     setMessages(m => [...m, { id: `u-${Date.now()}`, kind: 'user', text }]);
 
     const aiId = `ai-${Date.now()}`;
-    let fullText = '', intentType = 'factual_lookup', sourcesFound = 0, validationPassed = true;
+    let fullText = '', intentType = 'factual_lookup', sourcesFound = 0;
+    let validationPassed = true;
+    let unsupportedClaims = [];
+    let validationFeedback = '';
 
     setStreaming({ step: 0, text: '' });
 
@@ -167,12 +181,18 @@ export default function NotebookView({ notebook, onAddDocument }) {
       onIntent: e => { intentType = e.intent_type; setStreaming(s => ({ ...s, step: 1 })); },
       onRetrieval: e => { sourcesFound = e.sources_found; setStreaming(s => ({ ...s, step: 2 })); },
       onToken: chunk => { fullText += chunk; setStreaming(s => ({ ...s, step: 2, text: fullText })); },
-      onValidation: e => { validationPassed = e.passed; setStreaming(s => ({ ...s, step: 3 })); },
+      onValidation: e => {
+        validationPassed = e.passed;
+        if (Array.isArray(e.unsupported_claims)) unsupportedClaims = e.unsupported_claims;
+        if (typeof e.feedback === 'string') validationFeedback = e.feedback;
+        setStreaming(s => ({ ...s, step: 3 }));
+      },
       onDone: () => {
         setMessages(m => [...m, {
           id: aiId, kind: 'ai', text: fullText,
           intent: intentType, sources: sourcesFound,
           validated: validationPassed, retries: 0, cached: false,
+          unsupportedClaims, validationFeedback,
           trace: {
             total: 'see Langfuse', traceId: null,
             rows: [
@@ -234,7 +254,10 @@ export default function NotebookView({ notebook, onAddDocument }) {
                     <span className="pill pill-grey">{m.sources} sources</span>
                     {m.validated
                       ? <span className="pill pill-teal"><span className="check-anim"><Icon name="check" size={11} stroke={3}/></span> Verified</span>
-                      : <span className="pill pill-amber"><Icon name="alert" size={11}/> Unverified</span>}
+                      : <span className="pill pill-amber"
+                          title={m.validationFeedback || 'One or more claims could not be verified against the source documents.'}>
+                          <Icon name="alert" size={11}/> Unverified
+                        </span>}
                     {m.retries > 0 && <span className="pill pill-amber">{m.retries} retries</span>}
                     {m.cached && <span className="pill pill-lightning"><Icon name="bolt" size={11}/> Cache hit</span>}
                     <button className="msg-expand" onClick={() => toggleTrace(m.id)}>
@@ -242,6 +265,19 @@ export default function NotebookView({ notebook, onAddDocument }) {
                       <Icon name={openTraces.has(m.id) ? 'chevronUp' : 'chevronDown'} size={12}/>
                     </button>
                   </div>
+                  {!m.validated && (m.unsupportedClaims?.length > 0 || m.validationFeedback) && (
+                    <div className="validation-note">
+                      <div className="validation-note-head">
+                        <Icon name="alert" size={12}/> Unverified claims
+                      </div>
+                      {m.validationFeedback && <div className="validation-note-feedback">{m.validationFeedback}</div>}
+                      {m.unsupportedClaims?.length > 0 && (
+                        <ul className="validation-note-list">
+                          {m.unsupportedClaims.slice(0, 4).map((c, i) => <li key={i}>{c}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                   {openTraces.has(m.id) && <AgentTrace trace={m.trace} onClose={() => toggleTrace(m.id)}/>}
                 </div>
               </div>
@@ -311,9 +347,9 @@ export default function NotebookView({ notebook, onAddDocument }) {
           {rightOpen && <button className="icon-btn" style={{ marginRight: 6 }} onClick={() => setRightOpen(false)}><Icon name="x" size={14}/></button>}
         </div>
         <div className="tab-pane">
-          {tab === 'map' && <KnowledgeMap notebookId={notebook.id}/>}
+          {tab === 'map' && <KnowledgeMap data={mapData} loading={mapLoading} error={mapError}/>}
           {tab === 'stats' && <StatsTab stats={stats}/>}
-          {tab === 'sources' && <SourcesTab notebookId={notebook.id}/>}
+          {tab === 'sources' && <SourcesTab mapData={mapData} loading={mapLoading}/>}
         </div>
       </div>
     </div>

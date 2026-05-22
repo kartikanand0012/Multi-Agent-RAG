@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { fetchMap } from '../services/api';
 
 const LAYER = {
   2: { r: 20, fill: '#6C63FF', stroke: '#8a83ff', glow: 'glow2', label: 'Top Summary',      desc: 'Global document summary — highest abstraction level' },
@@ -55,10 +54,12 @@ function buildLayout(nodes, edges) {
   return pos;
 }
 
-export default function KnowledgeMap({ notebookId }) {
-  const [data, setData]         = useState({ nodes: [], edges: [] });
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+export default function KnowledgeMap({ data: dataProp, loading: loadingProp, error: errorProp }) {
+  // Map data + loading/error state are now owned by the parent (NotebookView)
+  // so switching tabs doesn't refetch.
+  const data    = dataProp  || { nodes: [], edges: [] };
+  const loading = loadingProp;
+  const error   = errorProp;
   const [selected, setSelected] = useState(null);   // node id
   const [selEdge, setSelEdge]   = useState(null);   // { from, to }
   const [xf, setXf]             = useState({ tx: 0, ty: 0, s: 1 });
@@ -67,13 +68,8 @@ export default function KnowledgeMap({ notebookId }) {
   const wrapRef = useRef(null);
   const dragRef = useRef(null);
 
-  useEffect(() => {
-    if (!notebookId) return;
-    setLoading(true); setError(null); setSelected(null); setSelEdge(null);
-    fetchMap(notebookId)
-      .then(d => { setData(d); setLoading(false); })
-      .catch(e => { setError(e.message); setLoading(false); });
-  }, [notebookId]);
+  // Reset selection when underlying data changes (e.g. notebook switch)
+  useEffect(() => { setSelected(null); setSelEdge(null); }, [data]);
 
   const pos     = useMemo(() => buildLayout(data.nodes || [], data.edges || []), [data]);
   const nodeMap = useMemo(() => Object.fromEntries((data.nodes || []).map(n => [n.id, n])), [data.nodes]);
