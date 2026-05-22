@@ -1,0 +1,36 @@
+# Celery worker image — same base as the API but runs celery instead of uvicorn.
+# Built from docker/Dockerfile stage 2 to share the same installed packages.
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+COPY app ./app
+
+RUN pip install --upgrade pip && \
+    pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+COPY --from=builder /build/app ./app
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+    mkdir -p logs && chown -R appuser:appuser /app
+
+CMD sh -c '\
+  chown -R appuser:appuser /app/logs 2>/dev/null || true; \
+  exec gosu appuser celery -A app.workers.celery_app worker \
+    --loglevel=info \
+    --concurrency=4 \
+    --queues=ingestion,analytics,celery'

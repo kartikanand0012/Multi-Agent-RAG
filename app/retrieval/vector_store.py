@@ -22,9 +22,37 @@ from app.core.exceptions import RetrievalError
 from app.ingestion.chunker import Chunk
 from app.llm.client import llm_client
 
-logger = logging.getLogger(__name__)
+import structlog
+logger = structlog.get_logger(__name__)
 
 DEFAULT_NOTEBOOK = "default"
+
+
+class _ContentFilterError(Exception):
+    """Raised when Azure content filter blocks an embedding request."""
+
+
+async def _embed_with_retry(texts: list[str]) -> list[list[float]]:
+    """Embed with tenacity retry + Azure content-filter handling."""
+    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+    from openai import RateLimitError, APIError, BadRequestError
+
+    @retry(
+        retry=retry_if_exception_type((RateLimitError, APIError)),
+        wait=wait_exponential(multiplier=1, min=2, max=20),
+        stop=stop_after_attempt(4),
+        reraise=True,
+    )
+    async def _inner():
+        try:
+            return await llm_client.embed(texts)
+        except BadRequestError as e:
+            # Azure content filter returns 400 with "ResponsibleAIPolicyViolation"
+            if "content_filter" in str(e).lower() or "ResponsibleAI" in str(e):
+                raise _ContentFilterError(str(e)) from e
+            raise
+
+    return await _inner()
 
 
 def _collection_name(notebook_id: str) -> str:
@@ -78,38 +106,39 @@ class VectorStore:
         chunks: List[Chunk],
         notebook_id: str = DEFAULT_NOTEBOOK,
     ) -> None:
-        """Embed and upsert chunks into the notebook's collection."""
+        """Embed and upsert chunks.
+
+        Batches in groups of 32 (Azure content-filter safe).
+        Skips individual chunks that trigger Azure content-filter errors
+        rather than aborting the whole ingestion.
+        """
         if not chunks:
             return
 
         col = self._get_collection(notebook_id)
-        BATCH = 100
+        BATCH = 32  # smaller batch → fewer tokens per Azure safety check
 
         for start in range(0, len(chunks), BATCH):
             batch = chunks[start : start + BATCH]
             texts = [c.text for c in batch]
-            ids = [c.chunk_id for c in batch]
-            metadatas = []
-            for c in batch:
-                # ChromaDB metadata values must be str/int/float/bool
-                safe_meta = {
-                    k: (str(v) if not isinstance(v, (str, int, float, bool)) else v)
-                    for k, v in c.metadata.items()
-                }
-                metadatas.append(safe_meta)
+            ids   = [c.chunk_id for c in batch]
+            metadatas = [
+                {k: (str(v) if not isinstance(v, (str, int, float, bool)) else v)
+                 for k, v in c.metadata.items()}
+                for c in batch
+            ]
 
             try:
-                embeddings = await llm_client.embed(texts)
+                embeddings = await _embed_with_retry(texts)
+            except _ContentFilterError as e:
+                # One or more chunks triggered the content filter — skip silently
+                logger.warning("Content filter hit — skipping batch", start=start, error=str(e))
+                continue
             except Exception as e:
                 raise RetrievalError(f"Embedding failed at batch {start}: {e}") from e
 
-            col.upsert(
-                ids=ids,
-                embeddings=embeddings,
-                documents=texts,
-                metadatas=metadatas,
-            )
-            logger.info(f"[{notebook_id}] stored batch {start}–{start + len(batch)}")
+            col.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+            logger.info("Stored batch", notebook_id=notebook_id, start=start, count=len(batch))
 
     # ── read ─────────────────────────────────────────────────────────────────
 

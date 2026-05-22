@@ -47,6 +47,9 @@ slowapi==0.1.9
 # Cache
 redis==5.2.1
 
+# Background workers
+celery[redis]==5.4.0
+
 # Utilities
 python-dotenv==1.0.1
 tiktoken==0.8.0
@@ -54,6 +57,9 @@ tenacity==9.0.0
 
 # Observability
 langfuse==4.6.1
+sentry-sdk[fastapi,sqlalchemy,celery]==2.18.0
+structlog==24.4.0
+asgi-correlation-id==4.3.4
 
 # Evaluation
 ragas==0.2.15

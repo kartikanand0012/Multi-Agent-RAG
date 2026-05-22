@@ -1,16 +1,39 @@
-name: CI — Lint + Unit Tests
+name: CI — Lint + Tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop, preprod]
   push:
-    branches: [main]
+    branches: [main, develop, preprod]
 
 jobs:
-  # ── Backend unit tests ────────────────────────────────────────────────────
+  # ── Backend tests (unit + integration) ────────────────────────────────────
   test-backend:
     name: Backend tests
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: rag_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -25,28 +48,48 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          # psycopg2 for Alembic sync migrations
+          pip install psycopg2-binary
 
-      - name: Run unit tests
-        run: |
-          python -m pytest tests/unit/ -v --tb=short -q
+      - name: Run Alembic migrations on test DB
+        run: python -m alembic upgrade head
         env:
-          AZURE_OPENAI_ENDPOINT: "https://dummy.openai.azure.com/"
-          AZURE_OPENAI_API_KEY: "dummy-key-for-ci"
-          AZURE_OPENAI_API_VERSION: "2024-08-01-preview"
-          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/rag_test"
           SECRET_KEY: "ci-test-secret-key-not-for-production"
           ENVIRONMENT: "test"
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-results
-          path: .pytest_cache/
+      - name: Run unit tests
+        run: python -m pytest tests/unit/ -v --tb=short -q
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          REDIS_URL: "redis://localhost:6379"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          ENVIRONMENT: "test"
+          # Stub Azure creds — LLM is monkeypatched in conftest.py
+          AZURE_OPENAI_ENDPOINT: "https://dummy.openai.azure.com/"
+          AZURE_OPENAI_API_KEY: "dummy-key-for-ci"
+          AZURE_OPENAI_API_VERSION: "2024-08-01-preview"
+          AZURE_OPENAI_DEPLOYMENT_GPT4O: "gpt-4o"
+          AZURE_OPENAI_DEPLOYMENT_GPT4O_MINI: "gpt-4o-mini"
+          AZURE_OPENAI_DEPLOYMENT_EMBEDDING: "text-embedding-3-large"
 
-  # ── Frontend lint ─────────────────────────────────────────────────────────
+      - name: Run integration tests
+        run: python -m pytest tests/integration/ -v --tb=short -q
+        env:
+          DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/rag_test"
+          REDIS_URL: "redis://localhost:6379"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
+          ENVIRONMENT: "test"
+          AZURE_OPENAI_ENDPOINT: "https://dummy.openai.azure.com/"
+          AZURE_OPENAI_API_KEY: "dummy-key-for-ci"
+          AZURE_OPENAI_API_VERSION: "2024-08-01-preview"
+          AZURE_OPENAI_DEPLOYMENT_GPT4O: "gpt-4o"
+          AZURE_OPENAI_DEPLOYMENT_GPT4O_MINI: "gpt-4o-mini"
+          AZURE_OPENAI_DEPLOYMENT_EMBEDDING: "text-embedding-3-large"
+
+  # ── Frontend lint + build ─────────────────────────────────────────────────
   lint-frontend:
-    name: Frontend lint
+    name: Frontend lint + build
     runs-on: ubuntu-latest
 
     steps:
@@ -59,7 +102,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install
         working-directory: frontend
         run: npm ci
 

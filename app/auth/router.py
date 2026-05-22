@@ -1,9 +1,10 @@
 """Authentication endpoints."""
 from __future__ import annotations
 
-import uuid
+import hashlib
 import logging
-from datetime import datetime, timezone
+import secrets
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError
@@ -14,41 +15,57 @@ from app.auth.dependencies import get_current_user
 from app.auth.jwt import create_access_token, create_refresh_token, decode_token
 from app.auth.password import hash_password, verify_password
 from app.auth.schemas import (
-    AccessTokenResponse, ChangePasswordRequest, LoginRequest,
-    RegisterRequest, TokenResponse, UpdateProfileRequest,
-    UserMeResponse, UserProfile, UserStats,
+    AccessTokenResponse, ApiKeyCreate, ApiKeyCreated, ApiKeyOut,
+    ChangePasswordRequest, LoginRequest, RegisterRequest,
+    TokenResponse, UpdateProfileRequest, UserMeResponse, UserProfile, UserStats,
 )
-from app.db.models import Notebook, QueryEvent, UploadEvent, User
+from app.cache.token_blacklist import token_blacklist
+from app.core.config import settings
+from app.db.models import AgentRun, ApiKey, IngestionJob, Notebook, Quota, QuotaPeriod, User
 from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _key_hash(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 # ── Register ───────────────────────────────────────────────────────────────────
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    # Check uniqueness
     existing = await db.execute(
         select(User).where((User.email == body.email) | (User.username == body.username))
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email or username already in use")
 
+    is_admin = body.email.lower() == settings.admin_email.lower()
     user = User(
         email=body.email,
         username=body.username,
         hashed_password=hash_password(body.password),
         full_name=body.full_name or body.username,
+        is_admin=is_admin,
     )
     db.add(user)
-    await db.flush()  # get user.id before commit
+    await db.flush()
 
-    access  = create_access_token(user.id, user.email)
+    # Auto-create daily quota
+    db.add(Quota(
+        user_id=user.id, period=QuotaPeriod.daily,
+        max_queries=settings.quota_max_queries_daily,
+        max_uploads=settings.quota_max_uploads_daily,
+        max_tokens=settings.quota_max_tokens_daily,
+    ))
+
+    access  = create_access_token(user.id, user.email, roles=["admin"] if is_admin else ["user"])
     refresh, _ = create_refresh_token(user.id)
+    # Revoke by jti if user ever calls /auth/logout; no action needed at creation
 
-    logger.info(f"New user registered: {user.email} ({user.id})")
+    logger.info("New user registered: %s", user.email)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
@@ -61,17 +78,29 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
 
     user.last_login_at = datetime.now(timezone.utc)
 
-    access  = create_access_token(user.id, user.email)
+    access  = create_access_token(user.id, user.email, roles=user.roles)
     refresh, _ = create_refresh_token(user.id)
 
-    logger.info(f"User logged in: {user.email}")
+    logger.info("User logged in: %s", user.email)
     return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+# ── Logout (blacklist refresh token) ──────────────────────────────────────────
+
+@router.post("/logout", status_code=204)
+async def logout(refresh_token: str):
+    try:
+        payload = decode_token(refresh_token)
+        jti = payload.get("jti")
+        if jti:
+            token_blacklist.revoke(jti)
+    except JWTError:
+        pass  # already expired — nothing to revoke
 
 
 # ── Refresh ────────────────────────────────────────────────────────────────────
@@ -86,12 +115,16 @@ async def refresh(refresh_token: str, db: AsyncSession = Depends(get_db)):
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Not a refresh token")
 
+    jti = payload.get("jti", "")
+    if jti and token_blacklist.is_revoked(jti):
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
+
     result = await db.execute(select(User).where(User.id == payload["sub"]))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or disabled")
 
-    access = create_access_token(user.id, user.email)
+    access = create_access_token(user.id, user.email, roles=user.roles)
     return AccessTokenResponse(access_token=access)
 
 
@@ -99,33 +132,31 @@ async def refresh(refresh_token: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me", response_model=UserMeResponse)
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from datetime import date
-
     month_start = datetime(date.today().year, date.today().month, 1, tzinfo=timezone.utc)
 
     total_q = (await db.execute(
-        select(func.count()).where(QueryEvent.user_id == current_user.id)
+        select(func.count()).select_from(AgentRun).where(AgentRun.user_id == current_user.id)
     )).scalar_one()
 
     total_u = (await db.execute(
-        select(func.count()).where(UploadEvent.user_id == current_user.id)
+        select(func.count()).select_from(IngestionJob).where(IngestionJob.user_id == current_user.id)
     )).scalar_one()
 
     nb_count = (await db.execute(
-        select(func.count()).where(Notebook.user_id == current_user.id)
+        select(func.count()).select_from(Notebook).where(Notebook.user_id == current_user.id)
     )).scalar_one()
 
     month_q = (await db.execute(
-        select(func.count()).where(
-            QueryEvent.user_id == current_user.id,
-            QueryEvent.created_at >= month_start,
+        select(func.count()).select_from(AgentRun).where(
+            AgentRun.user_id == current_user.id,
+            AgentRun.created_at >= month_start,
         )
     )).scalar_one()
 
     month_u = (await db.execute(
-        select(func.count()).where(
-            UploadEvent.user_id == current_user.id,
-            UploadEvent.created_at >= month_start,
+        select(func.count()).select_from(IngestionJob).where(
+            IngestionJob.user_id == current_user.id,
+            IngestionJob.created_at >= month_start,
         )
     )).scalar_one()
 
@@ -175,7 +206,50 @@ async def change_password(
 
 # ── API key management ─────────────────────────────────────────────────────────
 
-@router.post("/me/api-key/rotate", response_model=dict)
-async def rotate_api_key(current_user: User = Depends(get_current_user)):
-    current_user.api_key = str(uuid.uuid4())
-    return {"api_key": current_user.api_key}
+@router.post("/me/api-keys", response_model=ApiKeyCreated, status_code=201)
+async def create_api_key(
+    body: ApiKeyCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    raw_key = secrets.token_hex(32)   # 64-char hex; shown once
+    row = ApiKey(
+        user_id=current_user.id,
+        key_hash=_key_hash(raw_key),
+        label=body.label,
+    )
+    db.add(row)
+    await db.flush()
+    return ApiKeyCreated(
+        id=row.id, label=row.label,
+        last_used_at=row.last_used_at, expires_at=row.expires_at,
+        created_at=row.created_at, key=raw_key,
+    )
+
+
+@router.get("/me/api-keys", response_model=list[ApiKeyOut])
+async def list_api_keys(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ApiKey)
+        .where(ApiKey.user_id == current_user.id, ApiKey.revoked_at.is_(None))
+        .order_by(ApiKey.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.delete("/me/api-keys/{key_id}", status_code=204)
+async def revoke_api_key(
+    key_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == current_user.id)
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="API key not found")
+    row.revoked_at = datetime.now(timezone.utc)

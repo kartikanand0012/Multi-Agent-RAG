@@ -1,8 +1,9 @@
 """Auth request/response schemas."""
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -43,17 +44,17 @@ class UserProfile(BaseModel):
     username:      str
     full_name:     str
     is_admin:      bool
+    roles:         List[str] = []
     created_at:    datetime
-    last_login_at: Optional[datetime]
-    api_key:       str
+    last_login_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
 
 class UserStats(BaseModel):
-    total_queries:  int
-    total_uploads:  int
-    notebooks_count: int
+    total_queries:      int
+    total_uploads:      int
+    notebooks_count:    int
     queries_this_month: int
     uploads_this_month: int
 
@@ -78,3 +79,24 @@ class ChangePasswordRequest(BaseModel):
         if not any(c.isdigit() for c in v):
             raise ValueError("Password must contain at least one digit")
         return v
+
+
+# ── API key schemas ────────────────────────────────────────────────────────────
+
+class ApiKeyCreate(BaseModel):
+    label: str = Field("", max_length=80)
+
+
+class ApiKeyOut(BaseModel):
+    id:           str
+    label:        str
+    last_used_at: Optional[datetime] = None
+    expires_at:   Optional[datetime] = None
+    created_at:   datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ApiKeyCreated(ApiKeyOut):
+    """Includes the plaintext key — shown once only at creation."""
+    key: str
