@@ -65,7 +65,12 @@ def _app():
 async def client(_app, db) -> AsyncGenerator[AsyncClient, None]:
     """HTTPX async client wired to the test app + test DB session."""
     from app.db.session import get_db
-    _app.dependency_overrides[get_db] = lambda: db
+
+    # get_db is an async generator — the override must also be one
+    async def _override_db():
+        yield db
+
+    _app.dependency_overrides[get_db] = _override_db
 
     async with AsyncClient(transport=ASGITransport(app=_app), base_url="http://test") as c:
         yield c
@@ -83,12 +88,16 @@ async def user_factory(db: AsyncSession):
     async def _make(email: str | None = None, is_admin: bool = False) -> dict:
         email    = email or f"test-{uuid.uuid4().hex[:8]}@example.com"
         username = f"user_{uuid.uuid4().hex[:6]}"
+        # Give the user an explicit id so it's available before the flush
+        user_id = str(uuid.uuid4())
         user = User(
-            email=email, username=username,
+            id=user_id, email=email, username=username,
             hashed_password=hash_password("Password1"),
             is_admin=is_admin,
         )
         db.add(user)
+        await db.flush()  # flush user first so its PK exists before Quota FK
+
         db.add(Quota(user_id=user.id, period=QuotaPeriod.daily))
         await db.flush()
         return {"id": user.id, "email": email, "username": username}
