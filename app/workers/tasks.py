@@ -68,7 +68,12 @@ async def _ingest_document_async(task, job_id: str) -> dict:
                 raise FileNotFoundError(f"Temp file for job {job_id} missing — did worker restart?")
 
             suffix = Path(job.original_filename).suffix.lower()
-            output = await ingest_file(tmp_path, notebook_id=job.notebook_id, use_raptor=job.use_raptor)
+            output = await ingest_file(
+                tmp_path,
+                notebook_id=job.notebook_id,
+                use_raptor=job.use_raptor,
+                display_name=job.original_filename,
+            )
 
             job.status      = JobStatus.done
             job.finished_at = datetime.now(timezone.utc)

@@ -136,7 +136,7 @@ class DocumentLoader:
         ".html": _load_html,
     }
 
-    def load(self, path: str | Path) -> LoadedDocument:
+    def load(self, path: str | Path, display_name: str | None = None) -> LoadedDocument:
         path = Path(path)
         if not path.exists():
             raise IngestionError(f"File not found: {path}")
@@ -146,8 +146,14 @@ class DocumentLoader:
             raise IngestionError(f"Unsupported file type: {path.suffix}")
 
         try:
-            return loader_fn(path)
+            doc = loader_fn(path)
         except IngestionError:
             raise
         except Exception as e:
             raise IngestionError(f"Failed to load {path.name}: {e}") from e
+
+        # Override the temp-file source with the human-readable filename so
+        # chunk metadata propagates the real filename through ChromaDB → citations → map.
+        if display_name:
+            doc.metadata["source"] = display_name
+        return doc

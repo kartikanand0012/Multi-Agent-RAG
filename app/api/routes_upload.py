@@ -92,7 +92,12 @@ async def upload(
         t0 = _time.monotonic()
         job.status = JobStatus.processing
         try:
-            result = await ingest_file(tmp_path, notebook_id=nb.id, use_raptor=use_raptor)
+            result = await ingest_file(
+                tmp_path,
+                notebook_id=nb.id,
+                use_raptor=use_raptor,
+                display_name=file.filename,
+            )
             job.status      = JobStatus.done
             job.total_nodes = result["total_nodes"]
             job.leaf_chunks = result["leaf_chunks"]

@@ -20,17 +20,22 @@ async def ingest_file(
     file_path: str | Path,
     notebook_id: str = DEFAULT_NOTEBOOK,
     use_raptor: bool = True,
+    display_name: str | None = None,
 ) -> dict:
     """
     Full ingestion pipeline for a single file.
 
+    `display_name` overrides the chunk metadata source — pass the user's
+    original filename here so citations and the knowledge map show "Q4-Report.pdf"
+    instead of the worker's temp path.
+
     Returns a summary dict with counts for the API response.
     """
     path = Path(file_path)
-    logger.info(f"Ingesting '{path.name}' into notebook '{notebook_id}'")
+    logger.info(f"Ingesting '{display_name or path.name}' into notebook '{notebook_id}'")
 
-    # Step 1: Load
-    doc = _loader.load(path)
+    # Step 1: Load — use display_name as the source metadata
+    doc = _loader.load(path, display_name=display_name or path.name)
 
     # Step 2: Chunk
     chunks = _chunker.chunk(doc)

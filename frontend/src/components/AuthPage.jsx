@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Icon from './Icons';
+import AuthHero from './AuthHero';
 
 export default function AuthPage() {
   const { login, register } = useAuth();
@@ -44,15 +45,16 @@ export default function AuthPage() {
 
   return (
     <div className="auth-page">
+      <AuthHero/>
       <div className="auth-card">
-        {/* Logo */}
-        <div className="auth-logo">
+        {/* Logo (compact — hero carries the brand on desktop) */}
+        <div className="auth-logo auth-logo-compact">
           <div className="auth-logo-mark">
-            <Icon name="sparkles" size={22} stroke={2.5}/>
+            <Icon name="sparkles" size={20} stroke={2.5}/>
           </div>
           <div>
-            <div className="auth-logo-name">RAG Studio</div>
-            <div className="auth-logo-sub">Multi-Agent · Production</div>
+            <div className="auth-logo-name">Maestro</div>
+            <div className="auth-logo-sub">Sign in to continue</div>
           </div>
         </div>
 
@@ -114,7 +116,7 @@ export default function AuthPage() {
         )}
 
         <div className="auth-footer">
-          Built with FastAPI · React · RAPTOR · LangGraph
+          Maestro · Built with FastAPI · React · RAPTOR · LangGraph
         </div>
       </div>
     </div>

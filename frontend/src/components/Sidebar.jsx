@@ -13,8 +13,8 @@ export default function Sidebar({ notebooks, activeId, route, onSelect, onNewNot
           <Icon name="sparkles" size={14} stroke={2.5}/>
         </div>
         <div className="sb-logo-text">
-          <div className="sb-logo-name">RAG Studio</div>
-          <div className="sb-logo-sub">Multi-Agent</div>
+          <div className="sb-logo-name">Maestro</div>
+          <div className="sb-logo-sub">Multi-Agent RAG</div>
         </div>
       </button>
 

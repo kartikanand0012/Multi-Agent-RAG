@@ -1159,13 +1159,15 @@ input, textarea { font-family: inherit; color: inherit; }
 .auth-page {
   position: fixed; inset: 0;
   background: var(--bg);
-  display: grid; place-items: center;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
   z-index: 200;
-  padding: 20px;
+  overflow: hidden;
 }
 .auth-card {
-  width: 420px;
-  max-width: 100%;
+  width: 100%;
+  max-width: 460px;
+  margin: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1177,6 +1179,76 @@ input, textarea { font-family: inherit; color: inherit; }
   display: flex; align-items: center; gap: 12px;
   padding: 24px 28px 18px;
   border-bottom: 1px solid var(--border);
+}
+.auth-logo-compact { padding: 18px 28px 14px; }
+
+/* Hero — left column with animated canvas */
+.auth-hero {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0F1117 0%, #181a26 50%, #11131c 100%);
+  border-right: 1px solid var(--border);
+}
+.auth-hero-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}
+.auth-hero-overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: flex-start; justify-content: center;
+  padding: 56px 64px;
+  pointer-events: none;
+  z-index: 2;
+}
+.auth-hero-mark {
+  width: 56px; height: 56px; border-radius: 14px;
+  background: linear-gradient(135deg, #6C63FF, #00D4AA);
+  display: grid; place-items: center;
+  box-shadow: 0 12px 32px rgba(108, 99, 255, 0.45);
+  margin-bottom: 26px;
+}
+.auth-hero-mark-glyph {
+  font-family: var(--font-sans);
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.auth-hero-title {
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  background: linear-gradient(180deg, #ffffff 0%, #c4c8d8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin: 0 0 12px 0;
+  line-height: 1;
+}
+.auth-hero-tagline {
+  font-size: 18px;
+  color: var(--text-2);
+  margin: 0 0 24px 0;
+  letter-spacing: -0.005em;
+}
+.auth-hero-meta {
+  display: flex; gap: 8px; align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.auth-hero-dot { opacity: 0.5; }
+
+@media (max-width: 900px) {
+  .auth-page { grid-template-columns: 1fr; }
+  .auth-hero { display: none; }
+  .auth-card { margin: auto; }
 }
 .auth-logo-mark {
   width: 44px; height: 44px; border-radius: 10px;

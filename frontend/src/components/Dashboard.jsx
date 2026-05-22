@@ -8,8 +8,8 @@ export default function Dashboard({ onNewNotebook }) {
         <div className="dash-illus">
           <Icon name="sparkles" size={42} stroke={1.5}/>
         </div>
-        <h1>Welcome to RAG Studio</h1>
-        <p>Upload documents to create your first AI-powered notebook. Ask anything — four specialized agents handle the rest.</p>
+        <h1>Welcome to Maestro</h1>
+        <p>Upload documents to create your first AI-powered notebook. Ask anything — four specialized agents conduct the retrieval, reasoning, and validation.</p>
       </div>
 
       <div className="dash-cards">
