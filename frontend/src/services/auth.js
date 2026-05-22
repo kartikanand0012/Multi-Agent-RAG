@@ -60,7 +60,7 @@ export const authApi = {
   changePassword: (old_password, new_password) =>
     client.post('/auth/me/change-password', { old_password, new_password }),
 
-  rotateApiKey: () => client.post('/auth/me/api-key/rotate').then(r => r.data),
+  logout: (refresh_token) => client.post('/auth/logout', null, { params: { refresh_token } }),
 };
 
 export { client as apiClient };

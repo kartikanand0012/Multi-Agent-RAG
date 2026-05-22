@@ -35,7 +35,11 @@ export function AuthProvider({ children }) {
     return me;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      const refresh = tokenStore.getRefresh();
+      if (refresh) await authApi.logout(refresh);
+    } catch { /* ignore — clear tokens regardless */ }
     tokenStore.clear();
     setUser(null);
   }, []);
