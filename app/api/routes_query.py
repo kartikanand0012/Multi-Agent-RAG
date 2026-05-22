@@ -146,13 +146,15 @@ async def query_stream(
             validation_ok = validation.passed
             unsupported   = validation.unsupported_claims
             vfeedback     = validation.feedback
-            yield f"data: {json.dumps({
-                'type': 'validation',
-                'passed': validation.passed,
-                'unsupported_claims': unsupported,
-                'feedback': vfeedback,
-                'confidence': validation.confidence,
-            })}\n\n"
+            # Pre-build dict — multiline f-strings with backslashes are invalid in Python 3.11
+            validation_payload = json.dumps({
+                "type": "validation",
+                "passed": validation.passed,
+                "unsupported_claims": unsupported,
+                "feedback": vfeedback,
+                "confidence": validation.confidence,
+            })
+            yield f"data: {validation_payload}\n\n"
 
             if not validation.passed:
                 yield f"data: {json.dumps({'type': 'warning', 'message': 'Response could not be fully verified.'})}\n\n"
