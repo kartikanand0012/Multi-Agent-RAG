@@ -1,49 +1,54 @@
 """Shared pytest fixtures for unit and integration tests.
 
-DB: each test runs in a transaction that is rolled back on teardown —
-no need to create/drop tables between tests.
+DB strategy:
+  - Tables are created once per session with a sync wrapper around asyncio.run()
+    so the session-scoped setup doesn't conflict with function-scoped event_loop.
+  - Each test runs in a rolled-back transaction for full isolation.
 
-LLM: Azure calls are monkeypatched to return deterministic stubs so tests
-run without real credentials and don't consume tokens.
+LLM:
+  - All LLM calls are monkeypatched to return stubs (no real Azure calls, no tokens).
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-# ── Async mode ────────────────────────────────────────────────────────────────
-# pyproject.toml already sets asyncio_mode = "auto"
-
-
-# ── In-memory SQLite for tests ────────────────────────────────────────────────
-
+# ── In-memory SQLite test engine ──────────────────────────────────────────────
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
-_test_engine = create_async_engine(TEST_DB_URL, echo=False, future=True)
+_test_engine  = create_async_engine(TEST_DB_URL, echo=False, future=True)
 _TestSession  = async_sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def _create_tables():
-    """Create all tables once for the test session."""
+# ── One-time table setup/teardown — SYNC fixture using asyncio.run() ──────────
+# Using a sync fixture avoids the ScopeMismatch that arises when a session-scoped
+# async fixture tries to borrow the function-scoped event_loop.
+@pytest.fixture(scope="session", autouse=True)
+def _create_tables():
     from app.db.base import Base
-    from app.db import models  # noqa — register all models
-    async with _test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    from app.db import models  # noqa — registers all ORM classes
+
+    async def _setup():
+        async with _test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def _teardown():
+        async with _test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+
+    asyncio.run(_setup())
     yield
-    async with _test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    asyncio.run(_teardown())
 
 
+# ── Per-test DB session (rolled back after each test) ─────────────────────────
 @pytest_asyncio.fixture()
 async def db() -> AsyncGenerator[AsyncSession, None]:
-    """Yields a rolled-back session per test."""
     async with _TestSession() as session:
         await session.begin()
         try:
@@ -52,34 +57,27 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
 
 
-# ── App + HTTP client ─────────────────────────────────────────────────────────
-
+# ── App + HTTPX client ────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
 def _app():
-    """Create the FastAPI app once; override DB session dependency."""
     from app.api.main import create_app
     return create_app()
 
 
 @pytest_asyncio.fixture()
 async def client(_app, db) -> AsyncGenerator[AsyncClient, None]:
-    """HTTPX async client wired to the test app + test DB session."""
     from app.db.session import get_db
 
-    # get_db is an async generator — the override must also be one
     async def _override_db():
         yield db
 
     _app.dependency_overrides[get_db] = _override_db
-
     async with AsyncClient(transport=ASGITransport(app=_app), base_url="http://test") as c:
         yield c
-
     _app.dependency_overrides.clear()
 
 
 # ── User factories ────────────────────────────────────────────────────────────
-
 @pytest_asyncio.fixture()
 async def user_factory(db: AsyncSession):
     from app.auth.password import hash_password
@@ -88,17 +86,19 @@ async def user_factory(db: AsyncSession):
     async def _make(email: str | None = None, is_admin: bool = False) -> dict:
         email    = email or f"test-{uuid.uuid4().hex[:8]}@example.com"
         username = f"user_{uuid.uuid4().hex[:6]}"
-        # Give the user an explicit id so it's available before the flush
-        user_id = str(uuid.uuid4())
         user = User(
-            id=user_id, email=email, username=username,
+            id=str(uuid.uuid4()),   # explicit id so Quota FK is set before flush
+            email=email, username=username,
             hashed_password=hash_password("Password1"),
             is_admin=is_admin,
         )
         db.add(user)
-        await db.flush()  # flush user first so its PK exists before Quota FK
+        await db.flush()  # user PK must exist before Quota inserts it as FK
 
-        db.add(Quota(user_id=user.id, period=QuotaPeriod.daily))
+        db.add(Quota(
+            user_id=user.id, period=QuotaPeriod.daily,
+            max_queries=200, max_uploads=20, max_tokens=500_000,
+        ))
         await db.flush()
         return {"id": user.id, "email": email, "username": username}
 
@@ -113,7 +113,6 @@ async def admin_factory(db: AsyncSession, user_factory):
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
-
 @pytest.fixture()
 def auth_headers(client):
     async def _login(email: str, password: str = "Password1") -> dict:
@@ -123,14 +122,12 @@ def auth_headers(client):
     return _login
 
 
-# ── LLM stub (prevents real Azure calls) ─────────────────────────────────────
-
+# ── LLM stub — prevents any real Azure/OpenAI calls ──────────────────────────
 @pytest.fixture(autouse=True)
 def stub_llm(monkeypatch):
-    """Replace LLM calls with deterministic stubs for all tests."""
     import app.llm.client as llm_module
 
-    class _FakeClient:
+    class _FakeLLM:
         strong_model = "stub-gpt4o"
         fast_model   = "stub-gpt4o-mini"
 
@@ -144,7 +141,4 @@ def stub_llm(monkeypatch):
         async def embed(self, texts):
             return [[0.1] * 1536 for _ in texts]
 
-        def count_tokens(self, text):
-            return len(text.split())
-
-    monkeypatch.setattr(llm_module, "llm_client", _FakeClient())
+    monkeypatch.setattr(llm_module, "llm_client", _FakeLLM())
