@@ -1,28 +1,40 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Icon from './Icons';
+
+// Pure helper — computes the human-readable countdown given a reference "now".
+// Kept outside the component so it doesn't depend on render-time impurities.
+function formatResetIn(iso, nowMs) {
+  if (!iso) return null;
+  const diffMs = new Date(iso).getTime() - nowMs;
+  if (diffMs <= 0) return 'resets soon';
+  const totalMin = Math.floor(diffMs / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `resets in ${h}h ${m}m` : `resets in ${m}m`;
+}
 
 export default function UserMenu() {
   const { user, logout } = useAuth();
   const [open, setOpen]  = useState(false);
+  const [nowMs, setNowMs] = useState(null);   // set in effect — keeps render pure
+
+  // Tick "now" only while the dropdown is open. Avoids the
+  // react-hooks/purity lint error from calling Date.now() during render.
+  useEffect(() => {
+    if (!open) { setNowMs(null); return; }
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [open]);
 
   if (!user) return null;
   const { profile, stats, quota } = user;
 
-  // Human-readable "resets in Xh Ym"
-  const formatResetIn = (iso) => {
-    if (!iso) return null;
-    const diffMs = new Date(iso).getTime() - Date.now();
-    if (diffMs <= 0) return 'resets soon';
-    const totalMin = Math.floor(diffMs / 60000);
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    return h > 0 ? `resets in ${h}h ${m}m` : `resets in ${m}m`;
-  };
-
   const queryPct = quota?.max_queries
     ? Math.min(100, Math.round((quota.used_queries / quota.max_queries) * 100))
     : 0;
+  const resetIn = nowMs != null ? formatResetIn(quota?.resets_at, nowMs) : null;
 
   const initials = (profile.full_name || profile.username)
     .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -60,8 +72,8 @@ export default function UserMenu() {
                   <span className="um-quota-count">{quota.used_queries} / {quota.max_queries}</span>
                 </div>
                 <div className="um-quota-bar"><div className="um-quota-fill" style={{ width: `${queryPct}%` }}/></div>
-                {formatResetIn(quota.resets_at) && (
-                  <div className="um-quota-foot">{formatResetIn(quota.resets_at)}</div>
+                {resetIn && (
+                  <div className="um-quota-foot">{resetIn}</div>
                 )}
               </div>
             )}
