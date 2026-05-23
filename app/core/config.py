@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # ── Redis + Celery ────────────────────────────────────────────────────────
     redis_url: str = "redis://localhost:6379"
 
+    # When true, ingestion is queued to Celery; otherwise it runs inline in the
+    # web request. Default is False because preprod/prod typically don't have a
+    # dedicated worker service yet — keeping uploads inline ensures they actually
+    # complete instead of sitting forever in 'queued' status.
+    enable_celery: bool = False
+
     @property
     def celery_broker_url(self) -> str:
         return self.redis_url

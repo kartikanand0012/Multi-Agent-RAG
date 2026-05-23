@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import structlog
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.core.config import settings
 from app.db.models import IngestionJob, JobStatus, Notebook, User
 from app.db.session import get_db
 from app.middleware.quota import check_upload_quota, increment_upload_quota
@@ -78,37 +80,52 @@ async def upload(
 
     await increment_upload_quota(current_user, db)
 
-    # Queue Celery task
-    try:
-        from app.workers.tasks import ingest_document
-        task = ingest_document.delay(job.id)
-        job.celery_task_id = task.id
-        logger.info("Ingestion queued", job_id=job.id, file=file.filename, task_id=task.id)
-    except Exception as e:
-        logger.error("Celery unavailable — falling back to inline ingestion", error=str(e))
-        # Inline fallback so uploads still work without a worker
+    # Decide between Celery (background) and inline ingestion.
+    # Default = inline so uploads always actually complete; flip ENABLE_CELERY=true
+    # in Railway env vars only after a Celery worker service is running and
+    # confirmed to be consuming from the broker.
+    queued_to_celery = False
+    if settings.enable_celery:
+        try:
+            from app.workers.tasks import ingest_document
+            task = ingest_document.delay(job.id)
+            job.celery_task_id = task.id
+            queued_to_celery = True
+            logger.info("Ingestion queued (celery)", job_id=job.id, file=file.filename, task_id=task.id)
+        except Exception as e:
+            logger.error("Celery enqueue failed — falling back to inline", error=str(e))
+
+    if not queued_to_celery:
+        # Inline ingestion (blocks the HTTP request; demo/small-file friendly)
         from app.ingestion.pipeline import ingest_file
         import time as _time
         t0 = _time.monotonic()
         job.status = JobStatus.processing
+        await db.flush()
         try:
+            logger.info("Ingestion starting (inline)", job_id=job.id, file=file.filename)
             result = await ingest_file(
                 tmp_path,
                 notebook_id=nb.id,
                 use_raptor=use_raptor,
                 display_name=file.filename,
             )
-            job.status      = JobStatus.done
-            job.total_nodes = result["total_nodes"]
-            job.leaf_chunks = result["leaf_chunks"]
+            job.status        = JobStatus.done
+            job.total_nodes   = result["total_nodes"]
+            job.leaf_chunks   = result["leaf_chunks"]
             job.processing_ms = int((_time.monotonic() - t0) * 1000)
+            job.finished_at   = datetime.now(timezone.utc)
             nb.doc_count    += 1
             nb.total_chunks += result["leaf_chunks"]
+            logger.info("Ingestion done (inline)",
+                        job_id=job.id, nodes=result["total_nodes"], ms=job.processing_ms)
         except Exception as exc:
             job.status = JobStatus.failed
             job.error  = str(exc)[:500]
+            logger.error("Ingestion failed (inline)", job_id=job.id, error=str(exc))
         finally:
             tmp_path.unlink(missing_ok=True)
+            await db.flush()
 
     return {
         "job_id": job.id,
