@@ -17,7 +17,7 @@ from app.auth.password import hash_password, verify_password
 from app.auth.schemas import (
     AccessTokenResponse, ApiKeyCreate, ApiKeyCreated, ApiKeyOut,
     ChangePasswordRequest, LoginRequest, RegisterRequest,
-    TokenResponse, UpdateProfileRequest, UserMeResponse, UserProfile, UserStats,
+    TokenResponse, UpdateProfileRequest, UserMeResponse, UserProfile, UserQuota, UserStats,
 )
 from app.cache.token_blacklist import token_blacklist
 from app.core.config import settings
@@ -160,6 +160,26 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         )
     )).scalar_one()
 
+    # Daily quota (defaults to None if user has no quota row yet)
+    quota_row = (await db.execute(
+        select(Quota).where(
+            Quota.user_id == current_user.id,
+            Quota.period == QuotaPeriod.daily,
+        )
+    )).scalar_one_or_none()
+    quota_payload = None
+    if quota_row:
+        quota_payload = UserQuota(
+            period=quota_row.period.value if hasattr(quota_row.period, "value") else str(quota_row.period),
+            used_queries=quota_row.used_queries or 0,
+            max_queries=quota_row.max_queries or 0,
+            used_uploads=quota_row.used_uploads or 0,
+            max_uploads=quota_row.max_uploads or 0,
+            used_tokens=quota_row.used_tokens or 0,
+            max_tokens=quota_row.max_tokens or 0,
+            resets_at=quota_row.resets_at,
+        )
+
     return UserMeResponse(
         profile=UserProfile.model_validate(current_user),
         stats=UserStats(
@@ -169,6 +189,7 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
             queries_this_month=month_q,
             uploads_this_month=month_u,
         ),
+        quota=quota_payload,
     )
 
 

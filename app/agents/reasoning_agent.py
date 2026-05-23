@@ -60,7 +60,9 @@ class ReasoningAgent:
                     "You are a precise analytical assistant. "
                     "Answer using ONLY the provided context. "
                     "Cite every claim with [Source N]. "
-                    "If context is insufficient, say exactly what is missing."
+                    "If context is insufficient, say exactly what is missing. "
+                    "Always respond in the structured markdown format "
+                    "(## Answer / ## Key Points / ## Reasoning / ## Sources Used)."
                 ),
             },
             {"role": "user", "content": prompt},
@@ -95,7 +97,9 @@ class ReasoningAgent:
                 "content": (
                     "You are a precise analytical assistant. "
                     "Answer using ONLY the provided context. "
-                    "Cite every claim with [Source N]."
+                    "Cite every claim with [Source N]. "
+                    "Always respond in the structured markdown format "
+                    "(## Answer / ## Key Points / ## Reasoning / ## Sources Used)."
                 ),
             },
             {"role": "user", "content": prompt},

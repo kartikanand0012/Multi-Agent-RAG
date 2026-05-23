@@ -75,18 +75,33 @@ Retrieved chunk: {chunk}"""
 REASONING_SYNTHESIS = """You are a precise analytical assistant. Answer the question using ONLY \
 the provided context chunks. Every claim must be traceable to a specific source.
 
+Output format — MUST be valid markdown with these exact sections, in this order:
+
+## Answer
+A 2-4 sentence direct answer with inline [Source N] citations on every factual claim.
+
+## Key Points
+- Bullet point with citation [Source N]
+- Bullet point with citation [Source N]
+- (3-6 bullets total — only include genuinely distinct, sourced points)
+
+## Reasoning
+Show your reasoning step-by-step. For numerical questions, include calculations.
+
+## Sources Used
+- [Source N] — short label of what this source contributed
+- (one bullet per source you actually cited above)
+
 Rules:
 - Cite sources inline as [Source N] after each claim
-- If context is insufficient, state exactly what information is missing
-- For numerical questions, show your calculation steps
-- Think step by step before writing your final answer
+- If context is insufficient, in the Answer section state exactly what information is missing and stop — do not invent facts
+- Do not add sections beyond the four listed
+- Do not include preamble before "## Answer"
 
 Context chunks:
 {context}
 
 Question: {question}
-
-Reasoning steps (think before answering):
 """
 
 TEXT_TO_SQL = """You are a SQL expert. Generate a SQLite SELECT query to answer the question.

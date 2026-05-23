@@ -42,9 +42,11 @@ async def notebook_stats(
     db: AsyncSession   = Depends(get_db),
 ):
     from collections import Counter
-    nodes = vector_store.get_tree_nodes(notebook_id)
-    if not nodes:
-        raise HTTPException(status_code=404, detail=f"Notebook '{notebook_id}' not found or empty.")
+    # Empty notebooks return empty stats (200) instead of 404 — UI renders an empty state.
+    try:
+        nodes = vector_store.get_tree_nodes(notebook_id)
+    except Exception:
+        nodes = []
     layer_counts = Counter(n["layer"] for n in nodes)
     return NotebookStatsResponse(
         notebook_id=notebook_id,
@@ -56,17 +58,24 @@ async def notebook_stats(
 @router.get("/notebook/{notebook_id}/map", response_model=MapResponse, tags=["notebook"])
 async def notebook_map(
     notebook_id: str,
+    include_full_text: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession   = Depends(get_db),
 ):
-    raw_nodes = vector_store.get_tree_nodes(notebook_id)
-    if not raw_nodes:
-        raise HTTPException(status_code=404, detail=f"Notebook '{notebook_id}' not found or empty.")
+    # Empty notebooks return empty graph (200) so the UI can render "no data yet" cleanly.
+    try:
+        raw_nodes = vector_store.get_tree_nodes(notebook_id)
+    except Exception:
+        raw_nodes = []
 
+    text_limit = None if include_full_text else 200
     nodes = [
         MapNode(
-            id=n["id"], text=n["text"][:200], layer=n["layer"],
-            children=n["children"], source=n["source"],
+            id=n["id"],
+            text=n["text"] if text_limit is None else n["text"][:text_limit],
+            layer=n["layer"],
+            children=n["children"],
+            source=n["source"],
         )
         for n in raw_nodes
     ]

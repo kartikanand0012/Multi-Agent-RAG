@@ -58,7 +58,7 @@ export const streamQuery = (query, notebookId, callbacks = {}) => {
           else if (event.type === 'retrieval')  onRetrieval?.(event);
           else if (event.type === 'token')      onToken?.(event.content);
           else if (event.type === 'validation') onValidation?.(event);
-          else if (event.type === 'done')       onDone?.();
+          else if (event.type === 'done')       onDone?.(event);
           else if (event.type === 'error')      onError?.(event.message);
           else if (event.type === 'warning')    onValidation?.({ ...event, warning: true });
         } catch {}

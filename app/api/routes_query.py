@@ -127,26 +127,67 @@ async def query_stream(
         unsupported   = []
         vfeedback     = ""
         chunks_used   = []
+        agent_trace   = []   # per-step metrics for UI + DB
 
         try:
+            # Intent
+            t0 = time.monotonic()
             intent = await intent_agent.run(req.query)
             intent_type = intent.intent_type
+            tokens_in_intent = count_tokens(req.query)
+            tokens_out_intent = count_tokens(intent_type) + sum(count_tokens(q) for q in getattr(intent, "sub_queries", []) or [])
+            agent_trace.append({
+                "name": "intent",
+                "latency_ms": int((time.monotonic() - t0) * 1000),
+                "tokens_in": tokens_in_intent,
+                "tokens_out": tokens_out_intent,
+                "summary": intent_type,
+            })
             yield f"data: {json.dumps({'type': 'intent', 'intent_type': intent.intent_type})}\n\n"
 
+            # Retrieval
+            t0 = time.monotonic()
             chunks = await retrieval_agent.run(intent, notebook_id=req.notebook_id)
             chunks_used = chunks
             sources_found = len(chunks)
+            agent_trace.append({
+                "name": "retrieval",
+                "latency_ms": int((time.monotonic() - t0) * 1000),
+                "tokens_in": 0,  # retrieval is embedding + search, no LLM completion
+                "tokens_out": 0,
+                "summary": f"{sources_found} chunks",
+            })
             yield f"data: {json.dumps({'type': 'retrieval', 'sources_found': sources_found})}\n\n"
 
+            # Reasoning (streaming)
+            t0 = time.monotonic()
+            reasoning_input_tokens = count_tokens(req.query) + sum(
+                count_tokens(getattr(c, "text", "")) for c in (chunks or [])
+            )
             async for token in reasoning_agent.stream(req.query, intent, chunks):
                 full_response += token
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            agent_trace.append({
+                "name": "reasoning",
+                "latency_ms": int((time.monotonic() - t0) * 1000),
+                "tokens_in": reasoning_input_tokens,
+                "tokens_out": count_tokens(full_response),
+                "summary": full_response[:120],
+            })
 
+            # Validation
+            t0 = time.monotonic()
             validation = await validation_agent.run(full_response, chunks)
             validation_ok = validation.passed
             unsupported   = validation.unsupported_claims
             vfeedback     = validation.feedback
-            # Pre-build dict — multiline f-strings with backslashes are invalid in Python 3.11
+            agent_trace.append({
+                "name": "validation",
+                "latency_ms": int((time.monotonic() - t0) * 1000),
+                "tokens_in": count_tokens(full_response),
+                "tokens_out": count_tokens(vfeedback or ""),
+                "summary": "PASSED" if validation_ok else f"FAILED: {(vfeedback or '')[:80]}",
+            })
             validation_payload = json.dumps({
                 "type": "validation",
                 "passed": validation.passed,
@@ -167,14 +208,22 @@ async def query_stream(
                 run = await _persist_run(
                     db, current_user, req, intent_type, sources_found,
                     validation_ok, unsupported, vfeedback, latency_ms,
-                    full_response, chunks_used,
+                    full_response, chunks_used, agent_trace,
                 )
                 run_id = run.id if run else None
             except Exception as e:
                 logger.warning("agent_run persist failed", error=str(e))
                 run_id = None
 
-            yield f"data: {json.dumps({'type': 'done', 'run_id': run_id})}\n\n"
+            done_payload = json.dumps({
+                "type": "done",
+                "run_id": run_id,
+                "agent_trace": agent_trace,
+                "total_latency_ms": latency_ms,
+                "total_tokens_in": sum(s["tokens_in"] for s in agent_trace),
+                "total_tokens_out": sum(s["tokens_out"] for s in agent_trace),
+            })
+            yield f"data: {done_payload}\n\n"
 
         except Exception as e:
             logger.error("Stream error", error=str(e))
@@ -193,9 +242,14 @@ async def query_stream(
 async def _persist_run(
     db, user, req, intent_type, sources_found, validation_ok,
     unsupported, vfeedback, latency_ms, full_response, chunks,
+    agent_trace=None,
 ) -> AgentRun | None:
     """Write AgentRun + AgentSteps + RetrievedChunks to DB."""
     from app.llm.client import llm_client
+
+    agent_trace = agent_trace or []
+    total_in  = sum(s.get("tokens_in", 0)  for s in agent_trace) or count_tokens(req.query)
+    total_out = sum(s.get("tokens_out", 0) for s in agent_trace) or count_tokens(full_response)
 
     run = AgentRun(
         user_id=user.id,
@@ -206,8 +260,8 @@ async def _persist_run(
         validation_passed=validation_ok,
         unsupported_claims={"items": unsupported} if unsupported else None,
         validation_feedback=vfeedback,
-        total_tokens_in=count_tokens(req.query),
-        total_tokens_out=count_tokens(full_response),
+        total_tokens_in=total_in,
+        total_tokens_out=total_out,
         latency_ms=latency_ms,
         status=RunStatus.done,
         model_strong=llm_client.strong_model,
@@ -217,16 +271,33 @@ async def _persist_run(
     db.add(run)
     await db.flush()
 
-    # One AgentStep per agent (lightweight summary only — full trace is in Langfuse)
-    steps = [
-        AgentStep(agent_run_id=run.id, agent_name=AgentName.intent,     step_order=0, output_summary=intent_type[:200]),
-        AgentStep(agent_run_id=run.id, agent_name=AgentName.retrieval,  step_order=1, output_summary=f"{sources_found} chunks"),
-        AgentStep(agent_run_id=run.id, agent_name=AgentName.reasoning,  step_order=2, output_summary=full_response[:300]),
-        AgentStep(agent_run_id=run.id, agent_name=AgentName.validation, step_order=3,
-                  output_summary="PASSED" if validation_ok else f"FAILED: {vfeedback[:200]}"),
-    ]
-    for s in steps:
-        db.add(s)
+    # Per-step metrics from agent_trace, with sensible fallback summaries
+    _name_map = {
+        "intent": AgentName.intent,
+        "retrieval": AgentName.retrieval,
+        "reasoning": AgentName.reasoning,
+        "validation": AgentName.validation,
+    }
+    if agent_trace:
+        for i, step in enumerate(agent_trace):
+            db.add(AgentStep(
+                agent_run_id=run.id,
+                agent_name=_name_map.get(step.get("name"), AgentName.reasoning),
+                step_order=i,
+                latency_ms=int(step.get("latency_ms", 0)),
+                tokens_in=int(step.get("tokens_in", 0)),
+                tokens_out=int(step.get("tokens_out", 0)),
+                output_summary=str(step.get("summary", ""))[:300],
+            ))
+    else:
+        # Fallback: legacy lightweight summary if trace wasn't captured
+        for i, (name, summary) in enumerate([
+            (AgentName.intent,     intent_type[:200]),
+            (AgentName.retrieval,  f"{sources_found} chunks"),
+            (AgentName.reasoning,  full_response[:300]),
+            (AgentName.validation, "PASSED" if validation_ok else f"FAILED: {(vfeedback or '')[:200]}"),
+        ]):
+            db.add(AgentStep(agent_run_id=run.id, agent_name=name, step_order=i, output_summary=summary))
 
     # Top-5 retrieved chunks
     for i, chunk in enumerate(chunks[:5]):

@@ -59,9 +59,21 @@ class UserStats(BaseModel):
     uploads_this_month: int
 
 
+class UserQuota(BaseModel):
+    period:        str           # "daily" | "monthly"
+    used_queries:  int
+    max_queries:   int
+    used_uploads:  int
+    max_uploads:   int
+    used_tokens:   int
+    max_tokens:    int
+    resets_at:     Optional[datetime] = None
+
+
 class UserMeResponse(BaseModel):
     profile: UserProfile
     stats:   UserStats
+    quota:   Optional[UserQuota] = None
 
 
 class UpdateProfileRequest(BaseModel):

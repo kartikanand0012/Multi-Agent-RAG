@@ -7,7 +7,22 @@ export default function UserMenu() {
   const [open, setOpen]  = useState(false);
 
   if (!user) return null;
-  const { profile, stats } = user;
+  const { profile, stats, quota } = user;
+
+  // Human-readable "resets in Xh Ym"
+  const formatResetIn = (iso) => {
+    if (!iso) return null;
+    const diffMs = new Date(iso).getTime() - Date.now();
+    if (diffMs <= 0) return 'resets soon';
+    const totalMin = Math.floor(diffMs / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return h > 0 ? `resets in ${h}h ${m}m` : `resets in ${m}m`;
+  };
+
+  const queryPct = quota?.max_queries
+    ? Math.min(100, Math.round((quota.used_queries / quota.max_queries) * 100))
+    : 0;
 
   const initials = (profile.full_name || profile.username)
     .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -37,6 +52,19 @@ export default function UserMenu() {
               <div className="um-stat"><span>{stats.notebooks_count}</span><span>notebooks</span></div>
               <div className="um-stat"><span>{stats.total_uploads}</span><span>uploads total</span></div>
             </div>
+
+            {quota && (
+              <div className="um-quota">
+                <div className="um-quota-head">
+                  <span>Daily quota</span>
+                  <span className="um-quota-count">{quota.used_queries} / {quota.max_queries}</span>
+                </div>
+                <div className="um-quota-bar"><div className="um-quota-fill" style={{ width: `${queryPct}%` }}/></div>
+                {formatResetIn(quota.resets_at) && (
+                  <div className="um-quota-foot">{formatResetIn(quota.resets_at)}</div>
+                )}
+              </div>
+            )}
 
             {profile.is_admin && (
               <div className="um-badge-admin">Admin</div>

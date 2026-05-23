@@ -174,6 +174,10 @@ export default function NotebookView({ notebook, onAddDocument }) {
     let validationPassed = true;
     let unsupportedClaims = [];
     let validationFeedback = '';
+    let agentTrace = [];
+    let totalLatencyMs = 0;
+    let totalTokensIn  = 0;
+    let totalTokensOut = 0;
 
     setStreaming({ step: 0, text: '' });
 
@@ -187,20 +191,65 @@ export default function NotebookView({ notebook, onAddDocument }) {
         if (typeof e.feedback === 'string') validationFeedback = e.feedback;
         setStreaming(s => ({ ...s, step: 3 }));
       },
-      onDone: () => {
+      onDone: (e = {}) => {
+        agentTrace      = Array.isArray(e.agent_trace) ? e.agent_trace : [];
+        totalLatencyMs  = Number(e.total_latency_ms || 0);
+        totalTokensIn   = Number(e.total_tokens_in || 0);
+        totalTokensOut  = Number(e.total_tokens_out || 0);
+
+        // Build trace rows from real per-step metrics; fall back to legacy display if trace empty
+        const byName = Object.fromEntries(agentTrace.map(s => [s.name, s]));
+        const ms = (n) => (n != null ? `${(n / 1000).toFixed(2)}s` : '—');
+        const tokenBadge = (s) => {
+          const i = s?.tokens_in || 0, o = s?.tokens_out || 0;
+          return (i || o) ? { text: `${i}→${o} tok`, tone: 'pill-grey' } : null;
+        };
+        const rows = [
+          {
+            name: 'Intent Agent', passed: true,
+            timing: ms(byName.intent?.latency_ms),
+            badges: [
+              { text: intentType, tone: 'pill-purple' },
+              tokenBadge(byName.intent),
+            ].filter(Boolean),
+            subs: [],
+          },
+          {
+            name: 'Retrieval Agent', passed: true,
+            timing: ms(byName.retrieval?.latency_ms),
+            badges: [{ text: `${sourcesFound} chunks`, tone: 'pill-grey' }],
+            subs: [],
+          },
+          {
+            name: 'Reasoning Agent', passed: true,
+            timing: ms(byName.reasoning?.latency_ms),
+            badges: [
+              { text: 'gpt-4o', tone: 'pill-purple' },
+              tokenBadge(byName.reasoning),
+            ].filter(Boolean),
+            subs: [],
+          },
+          {
+            name: 'Validation Agent', passed: validationPassed,
+            timing: ms(byName.validation?.latency_ms),
+            badges: [
+              { text: validationPassed ? '✓ PASSED' : '⚠ UNVERIFIED', tone: validationPassed ? 'pill-teal' : 'pill-amber' },
+              tokenBadge(byName.validation),
+            ].filter(Boolean),
+            subs: [],
+          },
+        ];
+
         setMessages(m => [...m, {
           id: aiId, kind: 'ai', text: fullText,
           intent: intentType, sources: sourcesFound,
           validated: validationPassed, retries: 0, cached: false,
           unsupportedClaims, validationFeedback,
+          metrics: { totalLatencyMs, totalTokensIn, totalTokensOut },
           trace: {
-            total: 'see Langfuse', traceId: null,
-            rows: [
-              { name: 'Intent Agent',     passed: true,              timing: '—', badges: [{ text: intentType,          tone: 'pill-purple' }], subs: [] },
-              { name: 'Retrieval Agent',  passed: true,              timing: '—', badges: [{ text: `${sourcesFound} chunks`, tone: 'pill-grey'   }], subs: [] },
-              { name: 'Reasoning Agent',  passed: true,              timing: '—', badges: [{ text: 'gpt-4o',             tone: 'pill-purple' }], subs: [] },
-              { name: 'Validation Agent', passed: validationPassed,  timing: '—', badges: [{ text: validationPassed ? '✓ PASSED' : '⚠ UNVERIFIED', tone: validationPassed ? 'pill-teal' : 'pill-amber' }], subs: [] },
-            ],
+            total: totalLatencyMs ? `${(totalLatencyMs / 1000).toFixed(2)}s total` : 'see Langfuse',
+            traceId: null,
+            rows,
           },
         }]);
         setStreaming(null);
@@ -279,6 +328,15 @@ export default function NotebookView({ notebook, onAddDocument }) {
                     </div>
                   )}
                   {openTraces.has(m.id) && <AgentTrace trace={m.trace} onClose={() => toggleTrace(m.id)}/>}
+                  {m.metrics && (m.metrics.totalTokensIn || m.metrics.totalTokensOut || m.metrics.totalLatencyMs) ? (
+                    <div className="msg-footer">
+                      <span>{m.metrics.totalTokensIn} tokens in</span>
+                      <span className="msg-footer-dot">·</span>
+                      <span>{m.metrics.totalTokensOut} tokens out</span>
+                      <span className="msg-footer-dot">·</span>
+                      <span>{(m.metrics.totalLatencyMs / 1000).toFixed(2)}s</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

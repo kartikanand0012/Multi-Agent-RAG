@@ -361,6 +361,15 @@ input, textarea { font-family: inherit; color: inherit; }
 @keyframes blink { 50% { opacity: 0; } }
 
 .msg-meta { display: flex; align-items: center; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.msg-footer {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.msg-footer-dot { opacity: 0.5; }
 .pill {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1374,6 +1383,37 @@ input, textarea { font-family: inherit; color: inherit; }
 }
 .um-stat span:first-child { font-size: 16px; font-weight: 700; color: var(--text); }
 .um-stat span:last-child  { font-size: 9px;  color: var(--text-3); text-align: center; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.um-quota {
+  margin: 12px 14px 4px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.um-quota-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.um-quota-count { font-family: var(--font-mono); color: var(--text); }
+.um-quota-bar {
+  height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.um-quota-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  transition: width .3s ease;
+}
+.um-quota-foot {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
 
 .um-badge-admin {
   margin: 6px 14px 0;
