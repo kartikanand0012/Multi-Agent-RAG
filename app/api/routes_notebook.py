@@ -30,10 +30,12 @@ async def version():
         or "unknown"
     )
     return {
-        "commit":       commit_sha[:7] if commit_sha != "unknown" else "unknown",
-        "commit_full":  commit_sha,
-        "environment":  settings.environment,
-        "deployment":   os.environ.get("RAILWAY_DEPLOYMENT_ID", "unknown"),
+        "commit":               commit_sha[:7] if commit_sha != "unknown" else "unknown",
+        "commit_full":          commit_sha,
+        "environment":          settings.environment,
+        "deployment":           os.environ.get("RAILWAY_DEPLOYMENT_ID", "unknown"),
+        "allowed_origins":      settings.allowed_origins,
+        "allowed_origin_regex": settings.allowed_origin_regex or None,
     }
 
 

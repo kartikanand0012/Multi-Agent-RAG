@@ -1,11 +1,34 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────────────────────
     secret_key: str = Field(default="change-me-in-production-32-chars-min", min_length=16)
+    # Accepts comma-separated string from env (ALLOWED_ORIGINS=https://a.com,https://b.com),
+    # a JSON array, or a plain Python list when constructed in code.
     allowed_origins: list[str] = Field(default=["http://localhost:5173", "http://localhost:3000"])
+    # Regex for dynamic origins like Vercel preview URLs (e.g. https://.*\.vercel\.app$).
+    # Useful when each branch/PR gets a unique subdomain. Empty string disables.
+    allowed_origin_regex: str = ""
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def _parse_allowed_origins(cls, v):
+        if v is None or v == "":
+            return ["http://localhost:5173", "http://localhost:3000"]
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if s.startswith("["):
+                import json
+                try:
+                    return json.loads(s)
+                except json.JSONDecodeError:
+                    pass
+            return [origin.strip() for origin in s.split(",") if origin.strip()]
+        return v
 
     # ── Database ──────────────────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///./rag_studio.db"

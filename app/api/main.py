@@ -127,12 +127,19 @@ def create_app() -> FastAPI:
 
     # Middleware (innermost → outermost, applied in reverse order)
     app.add_middleware(RequestIDMiddleware)
-    app.add_middleware(
-        CORSMiddleware,
+    cors_kwargs = dict(
         allow_origins=settings.allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
+    )
+    if settings.allowed_origin_regex:
+        cors_kwargs["allow_origin_regex"] = settings.allowed_origin_regex
+    app.add_middleware(CORSMiddleware, **cors_kwargs)
+    logger.info(
+        f"CORS configured — origins={settings.allowed_origins} "
+        f"regex={settings.allowed_origin_regex or 'disabled'}"
     )
 
     # Request logging + security headers
