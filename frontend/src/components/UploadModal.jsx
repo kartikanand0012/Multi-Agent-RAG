@@ -29,6 +29,7 @@ export default function UploadModal({ notebookName, mode = 'add', onClose, onCom
   const [phase, setPhase] = useState('idle'); // idle | uploading | chunking | tree | done
   const [pct, setPct] = useState({ upload: 0, chunk: 0, tree: 0 });
   const [error, setError] = useState(null);
+  const [realResult, setRealResult] = useState(null);
   const inputRef = useRef(null);
 
   // Animate progress bars
@@ -67,17 +68,35 @@ export default function UploadModal({ notebookName, mode = 'add', onClose, onCom
     setPct({ upload: 0, chunk: 0, tree: 0 });
 
     try {
-      // Upload
-      await new Promise(r => setTimeout(r, 600));
+      // Initial fake animation so the user sees motion while bytes upload
+      await new Promise(r => setTimeout(r, 400));
       setPct(p => ({ ...p, upload: 100 }));
       setPhase('chunking');
 
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 300));
       setPct(p => ({ ...p, chunk: 100 }));
       setPhase('tree');
 
       const result = await uploadFile(files[0], nbId, raptor);
 
+      // Server now returns truth: { status, total_nodes, leaf_chunks, processing_ms }
+      const totalNodes = result?.total_nodes ?? 0;
+      const status     = result?.status;
+
+      if (status === 'failed') {
+        setPhase('idle');
+        setError(result?.error || 'Ingestion failed on the server.');
+        return;
+      }
+
+      if (status === 'done' && totalNodes === 0) {
+        setPhase('idle');
+        setError('File was processed but produced 0 chunks. The document may be empty or unreadable. Try a different file.');
+        return;
+      }
+
+      // Real success — snap progress to 100 and announce real counts
+      setRealResult(result);
       setPct(p => ({ ...p, tree: 100 }));
       setPhase('done');
 
@@ -88,10 +107,15 @@ export default function UploadModal({ notebookName, mode = 'add', onClose, onCom
           files,
           result,
         });
-      }, 900);
+      }, 700);
     } catch (e) {
       setPhase('idle');
-      setError(e.response?.data?.detail || e.message || 'Upload failed. Please try again.');
+      // FastAPI returns { detail: { error, ... } } on the 500 we throw for failed ingestion
+      const detail = e.response?.data?.detail;
+      const msg = typeof detail === 'string'
+        ? detail
+        : detail?.error || e.message || 'Upload failed. Please try again.';
+      setError(msg);
     }
   };
 
@@ -187,7 +211,11 @@ export default function UploadModal({ notebookName, mode = 'add', onClose, onCom
               )}
               <div className={"prog-row " + (phase === 'done' ? 'done' : 'pending')}>
                 <div className="prog-head">
-                  <b>{phase === 'done' ? <><Icon name="check" size={12} stroke={3}/> Indexing complete</> : 'Indexing complete'}</b>
+                  <b>
+                    {phase === 'done'
+                      ? <><Icon name="check" size={12} stroke={3}/> Indexed {realResult?.total_nodes ?? 0} nodes{realResult?.processing_ms ? ` in ${(realResult.processing_ms / 1000).toFixed(1)}s` : ''}</>
+                      : 'Indexing complete'}
+                  </b>
                   <span className="prog-pct">{phase === 'done' ? '✓' : '—'}</span>
                 </div>
               </div>

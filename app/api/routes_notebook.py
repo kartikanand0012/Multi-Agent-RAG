@@ -1,5 +1,7 @@
-"""Notebook data endpoints: stats, map, conversations, health."""
+"""Notebook data endpoints: stats, map, conversations, health, version."""
 from __future__ import annotations
+
+import os
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.schemas import HealthResponse, MapNode, MapResponse, NotebookStatsResponse
 from app.auth.dependencies import get_current_user
 from app.cache.redis_cache import query_cache
+from app.core.config import settings
 from app.core.tracing import observability_status
 from app.db.models import User
 from app.db.session import get_db
@@ -15,6 +18,23 @@ from app.retrieval.vector_store import vector_store
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
+
+
+@router.get("/version", tags=["system"])
+async def version():
+    """Live commit + environment for verifying which build is actually running."""
+    commit_sha = (
+        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+        or os.environ.get("VERCEL_GIT_COMMIT_SHA")
+        or os.environ.get("GIT_SHA")
+        or "unknown"
+    )
+    return {
+        "commit":       commit_sha[:7] if commit_sha != "unknown" else "unknown",
+        "commit_full":  commit_sha,
+        "environment":  settings.environment,
+        "deployment":   os.environ.get("RAILWAY_DEPLOYMENT_ID", "unknown"),
+    }
 
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])

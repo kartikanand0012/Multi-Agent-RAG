@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import Icon from './Icons';
-import { fetchHealth } from '../services/api';
+import { fetchHealth, fetchVersion } from '../services/api';
 
 export default function Settings({ onClearAll }) {
   const [confirm, setConfirm] = useState(false);
-  const [health, setHealth] = useState(null);
+  const [health, setHealth]   = useState(null);
+  const [version, setVersion] = useState(null);
 
   useEffect(() => {
     const t0 = Date.now();
     fetchHealth()
       .then(d => setHealth({ ...d, _ms: Date.now() - t0 }))
       .catch(() => setHealth(null));
+    fetchVersion().then(setVersion).catch(() => setVersion(null));
   }, []);
 
   const services = [
@@ -24,6 +26,15 @@ export default function Settings({ onClearAll }) {
     <div className="settings">
       <h1>System Health</h1>
       <p className="sub">Live status of services, configuration, and admin actions.</p>
+
+      {version && (
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 18, padding: '10px 14px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>
+          <span>Live build</span>
+          <code style={{ color: 'var(--text)' }}>{version.commit}</code>
+          <span className="muted">·</span>
+          <span>{version.environment}</span>
+        </div>
+      )}
 
       <div className="section">
         <h3 className="section-h">API Connection Status</h3>

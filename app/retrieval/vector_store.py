@@ -86,7 +86,23 @@ class VectorStore:
             settings=ChromaSettings(anonymized_telemetry=False),
         )
         self._collections: Dict[str, chromadb.Collection] = {}
-        logger.info("VectorStore initialised")
+
+        # Sanity report — surfaces volume-mount / permission problems immediately
+        try:
+            existing = self._client.list_collections()
+            writable = os.access(persist_dir, os.W_OK)
+            logger.info(
+                f"VectorStore ready — persist_dir={persist_dir} "
+                f"writable={writable} existing_collections={len(existing)} "
+                f"names={[c.name for c in existing][:10]}"
+            )
+            if not writable:
+                logger.error(
+                    f"ChromaDB persist dir is NOT WRITABLE: {persist_dir}. "
+                    f"Ingestion will fail. Check Railway volume mount + chown."
+                )
+        except Exception as e:
+            logger.exception(f"VectorStore sanity check failed: {e}")
 
     def _get_collection(self, notebook_id: str) -> chromadb.Collection:
         if notebook_id not in self._collections:
@@ -223,7 +239,12 @@ class VectorStore:
 try:
     vector_store = VectorStore()
 except Exception as _e:
-    logger.error(f"VectorStore persistent init failed, falling back to ephemeral: {_e}")
+    # critical: data will not persist; ingestion-then-restart will lose everything.
+    logger.critical(
+        "VectorStore persistent init failed — FALLING BACK TO EPHEMERAL. "
+        "All ingested data will be lost on restart. Fix the persist_dir / volume mount immediately.",
+        exc_info=True,
+    )
 
     class _EphemeralVectorStore(VectorStore):
         def __init__(self) -> None:

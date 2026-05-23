@@ -122,17 +122,33 @@ async def upload(
         except Exception as exc:
             job.status = JobStatus.failed
             job.error  = str(exc)[:500]
-            logger.error("Ingestion failed (inline)", job_id=job.id, error=str(exc))
+            logger.exception("Ingestion failed (inline)", job_id=job.id, file=file.filename)
         finally:
             tmp_path.unlink(missing_ok=True)
             await db.flush()
 
+    # If we ran inline and the job failed, surface a real HTTP error so the
+    # frontend can render the failure instead of celebrating a silent 202.
+    if not queued_to_celery and job.status == JobStatus.failed:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "job_id": job.id,
+                "error": job.error or "Ingestion failed",
+                "file": file.filename,
+                "notebook_id": nb.id,
+            },
+        )
+
     return {
-        "job_id": job.id,
-        "status": job.status.value,
-        "file": file.filename,
-        "notebook_id": nb.id,
-        "status_url": f"/api/v1/ingestion/{job.id}",
+        "job_id":         job.id,
+        "status":         job.status.value,
+        "file":           file.filename,
+        "notebook_id":    nb.id,
+        "total_nodes":    job.total_nodes or 0,
+        "leaf_chunks":    job.leaf_chunks or 0,
+        "processing_ms":  job.processing_ms or 0,
+        "status_url":     f"/api/v1/ingestion/{job.id}",
     }
 
 

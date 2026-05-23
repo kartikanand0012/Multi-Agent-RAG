@@ -2,8 +2,9 @@ import { apiClient, tokenStore } from './auth';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
-// ── Health (public) ────────────────────────────────────────────────────────────
-export const fetchHealth = () => apiClient.get('/health').then(r => r.data);
+// ── Health + version (public) ────────────────────────────────────────────────
+export const fetchHealth  = () => apiClient.get('/health').then(r => r.data);
+export const fetchVersion = () => apiClient.get('/version').then(r => r.data);
 
 // ── Upload ────────────────────────────────────────────────────────────────────
 export const uploadFile = (file, notebookId, useRaptor = true) => {
