@@ -84,14 +84,16 @@ async def lifespan(app: FastAPI):
     # Pre-compile agent singletons — stored on app.state for route reuse
     try:
         from app.agents.intent_agent import IntentAgent
-        from app.agents.retrieval_agent import RetrievalAgent
         from app.agents.reasoning_agent import ReasoningAgent
         from app.agents.validation_agent import ValidationAgent
         from app.orchestration.graph import get_graph
 
+        # Only stateless agents are stored as singletons. RetrievalAgent depends
+        # on a per-notebook BM25 index and is built fresh per request in
+        # routes_query.py — storing it here as a function caused a runtime
+        # AttributeError ("'function' object has no attribute 'is_ready'").
         app.state.agents = {
             "intent":     IntentAgent(),
-            "retrieval":  RetrievalAgent(vector_store, get_bm25),
             "reasoning":  ReasoningAgent(),
             "validation": ValidationAgent(),
         }

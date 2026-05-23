@@ -98,24 +98,26 @@ async def query_stream(
             detail=f"Notebook '{req.notebook_id}' has no documents. Upload a file first.",
         )
 
-    # Reuse pre-instantiated agent singletons from app.state
+    # Stateless agents are reused from singletons; retrieval is rebuilt per
+    # request because BM25 is per-notebook (its corpus changes with notebook_id).
     agents       = getattr(request.app.state, "agents", {})
     intent_agent     = agents.get("intent")
-    retrieval_agent  = agents.get("retrieval")
     reasoning_agent  = agents.get("reasoning")
     validation_agent = agents.get("validation")
 
-    # Fallback: instantiate if singletons missing (e.g. lifespan error)
-    if not all([intent_agent, retrieval_agent, reasoning_agent, validation_agent]):
+    # Always (re)build retrieval against the requested notebook's BM25 index
+    from app.agents.retrieval_agent import RetrievalAgent
+    from app.api.main import get_bm25
+    retrieval_agent = RetrievalAgent(vector_store, get_bm25(req.notebook_id))
+
+    # Fallback: instantiate stateless agents if singletons missing
+    if not all([intent_agent, reasoning_agent, validation_agent]):
         from app.agents.intent_agent import IntentAgent
-        from app.agents.retrieval_agent import RetrievalAgent
         from app.agents.reasoning_agent import ReasoningAgent
         from app.agents.validation_agent import ValidationAgent
-        from app.api.main import get_bm25
-        intent_agent     = IntentAgent()
-        retrieval_agent  = RetrievalAgent(vector_store, get_bm25(req.notebook_id))
-        reasoning_agent  = ReasoningAgent()
-        validation_agent = ValidationAgent()
+        intent_agent     = intent_agent     or IntentAgent()
+        reasoning_agent  = reasoning_agent  or ReasoningAgent()
+        validation_agent = validation_agent or ValidationAgent()
 
     t_start = time.monotonic()
 
