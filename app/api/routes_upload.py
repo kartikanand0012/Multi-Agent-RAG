@@ -74,8 +74,11 @@ async def upload(
     db.add(job)
     await db.flush()
 
-    # Write bytes to deterministic path keyed on job.id
-    tmp_path = Path(tempfile.gettempdir()) / f"ingest_{job.id}"
+    # Write bytes to deterministic path keyed on job.id. Critically, the suffix
+    # is preserved so the loader's extension-based dispatch (DocumentLoader._DISPATCH)
+    # can find the right handler. Without the suffix, ingestion fails with
+    # "Unsupported file type: " on every upload.
+    tmp_path = Path(tempfile.gettempdir()) / f"ingest_{job.id}{suffix}"
     tmp_path.write_bytes(content)
 
     await increment_upload_quota(current_user, db)

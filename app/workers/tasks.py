@@ -63,11 +63,15 @@ async def _ingest_document_async(task, job_id: str) -> dict:
             # the path is stored in job metadata (see routes_upload.py).
             # We re-create a NamedTemporaryFile from the stored bytes for now.
             # Phase 3: swap for S3/R2 object store.
-            tmp_path = Path(tempfile.gettempdir()) / f"ingest_{job_id}"
-            if not tmp_path.exists():
-                raise FileNotFoundError(f"Temp file for job {job_id} missing — did worker restart?")
-
             suffix = Path(job.original_filename).suffix.lower()
+            tmp_path = Path(tempfile.gettempdir()) / f"ingest_{job_id}{suffix}"
+            # Back-compat: older uploads may have used the extensionless path
+            if not tmp_path.exists():
+                legacy = Path(tempfile.gettempdir()) / f"ingest_{job_id}"
+                if legacy.exists():
+                    tmp_path = legacy
+                else:
+                    raise FileNotFoundError(f"Temp file for job {job_id} missing — did worker restart?")
             output = await ingest_file(
                 tmp_path,
                 notebook_id=job.notebook_id,
