@@ -38,22 +38,38 @@ class LLMClient:
     """
 
     def __init__(self) -> None:
-        if settings.use_azure:
-            self._client = AsyncAzureOpenAI(
-                azure_endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
-                api_version=settings.azure_openai_api_version,
+        # Never let a broken environment (e.g. malformed proxy env vars that
+        # httpx chokes on) crash the whole app at import time. If the client
+        # can't be created, LLM features raise a clear error only when used.
+        self._client = None
+        self._init_error: str | None = None
+        try:
+            if settings.use_azure:
+                self._client = AsyncAzureOpenAI(
+                    azure_endpoint=settings.azure_openai_endpoint,
+                    api_key=settings.azure_openai_api_key,
+                    api_version=settings.azure_openai_api_version,
+                )
+                self._gpt4o = settings.azure_openai_deployment_gpt4o
+                self._gpt4o_mini = settings.azure_openai_deployment_gpt4o_mini
+                self._embedding_model = settings.azure_openai_deployment_embedding
+                logger.info("LLMClient initialised with Azure OpenAI")
+            else:
+                self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+                self._gpt4o = "gpt-4o"
+                self._gpt4o_mini = "gpt-4o-mini"
+                self._embedding_model = "text-embedding-3-large"
+                logger.info("LLMClient initialised with direct OpenAI")
+        except Exception as e:
+            self._init_error = str(e)
+            logger.warning(f"LLM client failed to initialise (LLM features disabled): {e}")
+
+    def _require_client(self) -> None:
+        if self._client is None:
+            raise LLMError(
+                "LLM client unavailable"
+                + (f": {self._init_error}" if self._init_error else "")
             )
-            self._gpt4o = settings.azure_openai_deployment_gpt4o
-            self._gpt4o_mini = settings.azure_openai_deployment_gpt4o_mini
-            self._embedding_model = settings.azure_openai_deployment_embedding
-            logger.info("LLMClient initialised with Azure OpenAI")
-        else:
-            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
-            self._gpt4o = "gpt-4o"
-            self._gpt4o_mini = "gpt-4o-mini"
-            self._embedding_model = "text-embedding-3-large"
-            logger.info("LLMClient initialised with direct OpenAI")
 
     @property
     def strong_model(self) -> str:
@@ -79,6 +95,7 @@ class LLMClient:
         max_tokens: int = 2048,
     ) -> str:
         """Send a chat completion request and return the response text."""
+        self._require_client()
         model = model or self._gpt4o
         try:
             response = await self._client.chat.completions.create(
@@ -101,6 +118,7 @@ class LLMClient:
         max_tokens: int = 2048,
     ) -> AsyncIterator[str]:
         """Stream tokens one chunk at a time."""
+        self._require_client()
         model = model or self._gpt4o
         try:
             response = await self._client.chat.completions.create(
@@ -125,6 +143,7 @@ class LLMClient:
     )
     async def embed(self, texts: List[str]) -> List[List[float]]:
         """Return embeddings for a list of strings."""
+        self._require_client()
         try:
             response = await self._client.embeddings.create(
                 model=self._embedding_model,
