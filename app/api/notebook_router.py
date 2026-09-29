@@ -60,6 +60,10 @@ async def create_notebook(
 
     nb = Notebook(id=body.id, name=body.name, user_id=current_user.id)
     db.add(nb)
+    # Flush so Python-side defaults (doc_count, created_at, updated_at)
+    # materialize before response_model serialization; refresh pulls them back.
+    await db.flush()
+    await db.refresh(nb)
     return nb
 
 
