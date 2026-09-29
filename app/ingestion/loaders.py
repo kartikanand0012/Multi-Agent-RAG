@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 from typing import List
 
-import pandas as pd
 from pydantic import BaseModel
 
 from app.core.exceptions import IngestionError
@@ -54,6 +53,8 @@ def _load_docx(path: Path) -> LoadedDocument:
 
 
 def _load_excel(path: Path) -> LoadedDocument:
+    import pandas as pd  # lazy: pandas is heavy (~65MB), only needed for Excel
+
     xl = pd.ExcelFile(str(path))
     tables: list[pd.DataFrame] = []
     text_parts: list[str] = []

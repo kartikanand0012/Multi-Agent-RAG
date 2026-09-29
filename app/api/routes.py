@@ -21,10 +21,12 @@ from app.cache.redis_cache import query_cache
 from app.core.tracing import observability_status
 from app.db.models import Notebook, QueryEvent, UploadEvent, User
 from app.db.session import get_db
-from app.ingestion.pipeline import ingest_file
 from app.llm.client import count_tokens
-from app.orchestration.graph import query as run_query
 from app.retrieval.vector_store import vector_store
+
+# NOTE: app.ingestion.pipeline and app.orchestration.graph are imported lazily
+# inside their endpoints — they pull in heavy deps (pandas, langchain) that
+# would otherwise bloat startup memory on small instances.
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -102,6 +104,8 @@ async def upload(
         tmp_path = Path(tmp.name)
 
     t0 = time.monotonic()
+    from app.ingestion.pipeline import ingest_file  # lazy: heavy deps
+
     try:
         result = await ingest_file(tmp_path, notebook_id=notebook_id, use_raptor=use_raptor)
     finally:
@@ -158,6 +162,8 @@ async def query(
         raise HTTPException(status_code=404, detail=f"Notebook '{req.notebook_id}' has no documents.")
 
     t0 = time.monotonic()
+    from app.orchestration.graph import query as run_query  # lazy: heavy deps
+
     result = await run_query(req.query, notebook_id=req.notebook_id)
     latency_ms = int((time.monotonic() - t0) * 1000)
 
