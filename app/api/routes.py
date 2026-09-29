@@ -231,13 +231,14 @@ async def query_stream(
 
             validation = await validation_agent.run(full_response, chunks)
             validation_ok = validation.passed
-            yield f"data: {json.dumps({
-                'type': 'validation',
-                'passed': validation.passed,
-                'unsupported_claims': validation.unsupported_claims,
-                'feedback': validation.feedback,
-                'confidence': validation.confidence,
-            })}\n\n"
+            validation_payload = {
+                "type": "validation",
+                "passed": validation.passed,
+                "unsupported_claims": validation.unsupported_claims,
+                "feedback": validation.feedback,
+                "confidence": validation.confidence,
+            }
+            yield f"data: {json.dumps(validation_payload)}\n\n"
 
             if not validation.passed:
                 yield f"data: {json.dumps({'type': 'warning', 'message': 'Response could not be fully verified.'})}\n\n"
