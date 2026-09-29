@@ -1,6 +1,5 @@
 import { apiClient, tokenStore } from './auth';
-
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+import { resolveApiBase } from './config';
 
 // ── Health (public) ────────────────────────────────────────────────────────────
 export const fetchHealth = () => apiClient.get('/health').then(r => r.data);
@@ -23,7 +22,7 @@ export const streamQuery = (query, notebookId, callbacks = {}) => {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  fetch(`${BASE}/query/stream`, {
+  fetch(`${resolveApiBase()}/query/stream`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ query, notebook_id: notebookId }),

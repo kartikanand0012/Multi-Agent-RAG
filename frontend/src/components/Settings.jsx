@@ -1,17 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import Icon from './Icons';
 import { fetchHealth } from '../services/api';
+import { getStoredApiUrl, resolveApiBase, setStoredApiUrl } from '../services/config';
 
 export default function Settings({ onClearAll }) {
   const [confirm, setConfirm] = useState(false);
   const [health, setHealth] = useState(null);
+  const [apiUrl, setApiUrl] = useState('');
+  const [apiSaved, setApiSaved] = useState(false);
 
   useEffect(() => {
+    setApiUrl(getStoredApiUrl());
     const t0 = Date.now();
     fetchHealth()
       .then(d => setHealth({ ...d, _ms: Date.now() - t0 }))
       .catch(() => setHealth(null));
   }, []);
+
+  const saveApiUrl = () => {
+    setStoredApiUrl(apiUrl);
+    setApiSaved(true);
+    setTimeout(() => window.location.reload(), 600);
+  };
 
   const services = [
     { name: 'FastAPI Backend',        icon: 'sparkles',  latency: health ? `${health._ms}ms`                        : '—', status: health    ? 'ok'  : 'pending' },
@@ -50,6 +60,33 @@ export default function Settings({ onClearAll }) {
               <div className="tr-latency">{s.latency}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="section">
+        <h3 className="section-h">Backend Connection</h3>
+        <div className="table-card" style={{ padding: 16 }}>
+          <div className="lbl" style={{ marginBottom: 8 }}>API base URL</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={apiUrl}
+              onChange={e => { setApiUrl(e.target.value); setApiSaved(false); }}
+              placeholder="https://your-backend.onrender.com/api/v1"
+              spellCheck={false}
+              style={{
+                flex: 1, background: 'var(--surface-2)', border: '1px solid var(--border)',
+                borderRadius: 8, padding: '8px 12px', color: 'var(--text-1)',
+                fontFamily: 'monospace', fontSize: 13,
+              }}
+            />
+            <button className="btn-primary" onClick={saveApiUrl}>
+              {apiSaved ? 'Saved ✓' : 'Save & Reload'}
+            </button>
+          </div>
+          <div className="val muted" style={{ fontSize: 12, marginTop: 8 }}>
+            Currently using: <span className="strong" style={{ fontFamily: 'monospace' }}>{resolveApiBase()}</span>
+            <br />Leave empty to use the build-time default. You can also append <span style={{ fontFamily: 'monospace' }}>?api=&lt;url&gt;</span> to the page URL.
+          </div>
         </div>
       </div>
 

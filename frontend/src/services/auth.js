@@ -1,7 +1,9 @@
 import axios from 'axios';
+import { resolveApiBase } from './config';
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-const client = axios.create({ baseURL: BASE, timeout: 30000 });
+// baseURL is resolved per-request (see interceptor below) so a runtime
+// override (Settings page, ?api= param) takes effect without a rebuild.
+const client = axios.create({ timeout: 30000 });
 
 const TOKEN_KEY   = 'rag_access_token';
 const REFRESH_KEY = 'rag_refresh_token';
@@ -14,8 +16,9 @@ export const tokenStore = {
   clear:      ()    => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY); },
 };
 
-// Attach token to every request
+// Attach token + resolve backend URL on every request
 client.interceptors.request.use(cfg => {
+  cfg.baseURL = resolveApiBase();
   const token = tokenStore.get();
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
   return cfg;
@@ -31,7 +34,7 @@ client.interceptors.response.use(
       try {
         const refresh = tokenStore.getRefresh();
         if (!refresh) throw new Error('no refresh token');
-        const { data } = await axios.post(`${BASE}/auth/refresh`, null, {
+        const { data } = await axios.post(`${resolveApiBase()}/auth/refresh`, null, {
           params: { refresh_token: refresh },
         });
         tokenStore.set(data.access_token);
